@@ -19,7 +19,8 @@
     "biome"
   ],
   "scripts": {
-    "test": "node --test \"test/*.test.ts\""
+    "test": "node --test \"test/*.test.ts\"",
+    "test:flow": "node --test \"scripts/*.test.mjs\""
   },
   "peerDependencies": {
     "@biomejs/biome": "2.5.15"
