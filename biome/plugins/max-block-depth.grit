@@ -1,0 +1,16 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+JsBlockStatement(statements = $inside_first) where {
+    $inside_first <: contains JsBlockStatement(statements = $inside_second) where {
+        $inside_second <: contains JsBlockStatement(statements = $inside_third) where {
+            $inside_third <: contains JsBlockStatement(statements = $inside_fourth) where {
+                $inside_fourth <: contains JsBlockStatement() as $fifth
+            }
+        }
+    },
+    register_diagnostic(
+        span = $fifth,
+        message = "Blocks are nested more than 4 levels deep. Move the inner blocks into a function."
+    )
+}
