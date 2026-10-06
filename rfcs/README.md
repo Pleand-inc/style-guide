@@ -25,11 +25,11 @@
 
 ## 받아들이기
 
-- RFC 는 pull request 로만 받습니다. 이 저장소는 협업자만 pull request 를 열 수 있습니다.
-- 저장소 관리자가 pull request 를 `master` 에 머지하면 RFC 를 받아들인 것입니다.
+- RFC 는 `develop` 으로 가는 pull request 로만 받습니다. 이 저장소는 협업자만 pull request 를 열 수 있습니다.
+- 저장소 관리자가 RFC 를 받아들이면 pull request 를 `develop` 에 머지합니다. `develop` 에 들어간 RFC 가 받아들인 RFC 입니다.
 - 받아들이지 않는 RFC 는 pull request 를 닫고, 닫는 이유를 pull request 에 적습니다.
 - 머지된 제안 문서는 고치지 않습니다. 받아들인 내용을 다시 바꾸려면 새 RFC 를 올리고, 새 제안 문서에 이전 제안 문서의 파일 이름을 적습니다.
 
 ## 쓰는 저장소에 전달
 
-받아들인 변경은 `@pleand-inc/style-guide` 패키지의 다음 버전에 실립니다. 게시 방법은 저장소 루트의 `README.md` 에 있습니다. 쓰는 저장소는 패키지의 버전을 올려 변경을 받습니다.
+받아들인 변경은 `develop` 을 `master` 로 올려 게시하는 `@pleand-inc/style-guide` 패키지의 다음 버전에 실립니다. 브랜치 흐름과 게시 방법은 저장소 루트의 `README.md` 에 있습니다. 쓰는 저장소는 패키지의 버전을 올려 변경을 받습니다.
