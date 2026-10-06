@@ -1,0 +1,52 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "formatter": {
+    "indentStyle": "space",
+    "lineWidth": 80
+  },
+  "plugins": [
+    "./node_modules/@pleand-inc/style-guide/biome/plugins/max-block-depth.grit",
+    "./node_modules/@pleand-inc/style-guide/biome/plugins/no-suppression-comment.grit"
+  ],
+  "linter": {
+    "rules": {
+      "recommended": true,
+      "complexity": {
+        "noExcessiveCognitiveComplexity": {
+          "level": "error",
+          "options": { "maxAllowedComplexity": 15 }
+        },
+        "noExcessiveLinesPerFunction": {
+          "level": "error",
+          "options": { "maxLines": 80 }
+        },
+        "useMaxParams": {
+          "level": "error",
+          "options": { "max": 3 }
+        }
+      },
+      "nursery": {
+        "noUnsafeTypeAssertion": "error"
+      },
+      "style": {
+        "noEnum": "error",
+        "noNestedTernary": "error",
+        "noNonNullAssertion": "error",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "patterns": [
+              {
+                "group": [".", "..", "./**", "../**"],
+                "message": "Import through the alias declared in tsconfig paths instead of a relative path."
+              }
+            ]
+          }
+        }
+      },
+      "suspicious": {
+        "noExplicitAny": "error"
+      }
+    }
+  }
+}

@@ -10,8 +10,23 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
+  "type": "module",
+  "exports": {
+    "./biome": "./biome/shared.json"
+  },
   "files": [
-    "README.md"
+    "README.md",
+    "biome"
   ],
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\""
+  },
+  "peerDependencies": {
+    "@biomejs/biome": "2.5.15"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "zod": "4.6.5"
+  },
   "license": "MPL-2.0"
 }
