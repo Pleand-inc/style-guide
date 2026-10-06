@@ -2,7 +2,15 @@
 
 Pleand 의 TypeScript 코드 규칙을 담는 저장소입니다. 규칙 문서와 lint, TypeScript 설정을 `@pleand-inc/style-guide` 패키지로 GitHub Packages 에 게시합니다.
 
-지금 게시된 버전은 게시와 설치 경로를 확인하는 판입니다. 규칙과 설정은 아직 들어 있지 않습니다.
+## 패키지에 든 것
+
+| 경로 | 내용 | 받는 방법 |
+|---|---|---|
+| `rules/RULES.md`, `rules/EXAMPLES.md` | 코드 규칙과 예시 | `node_modules/@pleand-inc/style-guide/rules/` 를 읽습니다 |
+| `biome/shared.json` | Biome 포매터와 lint 설정, 플러그인 | `biome.json` 에 `"extends": ["@pleand-inc/style-guide/biome"]` |
+| `tsconfig/base.json`, `tsconfig/web.json`, `tsconfig/node.json` | TypeScript 설정 | `tsconfig.json` 에 `"extends": "@pleand-inc/style-guide/tsconfig/web"` 또는 `/node` |
+
+`biome/shared.json` 은 플러그인을 쓰는 저장소의 `node_modules` 경로로 가리킵니다. `biome.json` 은 패키지가 설치된 `node_modules` 가 있는 폴더에 둡니다. 쓰는 저장소는 `@biomejs/biome` 2.5.15 와 `typescript` 를 자기 `devDependencies` 에 둡니다.
 
 ## 규칙을 바꿀 때
 
