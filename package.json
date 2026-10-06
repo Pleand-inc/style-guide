@@ -1,0 +1,16 @@
+{
+  "name": "@pleand-inc/style-guide",
+  "version": "0.0.1",
+  "description": "Pleand code standards: the rules, shared lint and TypeScript configuration, and the RFCs that change them",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pleand-inc/style-guide.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": [
+    "README.md"
+  ],
+  "license": "UNLICENSED"
+}
