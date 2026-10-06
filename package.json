@@ -20,7 +20,8 @@
   "files": [
     "README.md",
     "biome",
-    "tsconfig"
+    "tsconfig",
+    "rules"
   ],
   "scripts": {
     "test": "node --test \"test/*.test.ts\"",
