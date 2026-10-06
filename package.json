@@ -1,7 +1,8 @@
 {
   "name": "@pleand-inc/style-guide",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Pleand code standards: the rules, shared lint and TypeScript configuration, and the RFCs that change them",
+  "author": "Pleand Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Pleand-inc/style-guide.git"
@@ -12,5 +13,5 @@
   "files": [
     "README.md"
   ],
-  "license": "UNLICENSED"
+  "license": "MPL-2.0"
 }
