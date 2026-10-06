@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,6 +17,7 @@ import { z } from "zod";
 const repositoryRoot = process.cwd();
 const fixturesDirectory = join(repositoryRoot, "test", "fixtures");
 const biomeBinary = join(repositoryRoot, "node_modules", ".bin", "biome");
+const typescriptBinary = join(repositoryRoot, "node_modules", ".bin", "tsc");
 const consumerDirectory = mkdtempSync(join(tmpdir(), "style-guide-consumer-"));
 
 const reportSchema = z.object({
@@ -65,6 +67,54 @@ const expectedByBiomeFixture = new Map([
   ],
 ]);
 
+const consumerTsconfigByPreset = new Map([
+  [
+    "base",
+    {
+      extends: "@pleand-inc/style-guide/tsconfig",
+      compilerOptions: {
+        noEmit: true,
+        module: "es2022",
+        moduleResolution: "bundler",
+      },
+      include: ["src/typescript/base"],
+    },
+  ],
+  [
+    "web",
+    {
+      extends: "@pleand-inc/style-guide/tsconfig/web",
+      include: ["src/typescript/web"],
+    },
+  ],
+  [
+    "node",
+    {
+      extends: "@pleand-inc/style-guide/tsconfig/node",
+      include: ["src/typescript/node"],
+    },
+  ],
+]);
+
+const expectedTypescriptErrorsByPreset = new Map([
+  [
+    "base",
+    [
+      { fixture: "erasable-syntax-only.ts", code: "TS1294" },
+      { fixture: "exact-optional-property-types.ts", code: "TS1360" },
+      { fixture: "strict-implicit-any.ts", code: "TS7006" },
+      { fixture: "strict-null-checks.ts", code: "TS18048" },
+      { fixture: "unchecked-indexed-access.ts", code: "TS2532" },
+      { fixture: "verbatim-module-syntax.ts", code: "TS1205" },
+    ],
+  ],
+  ["web", [{ fixture: "node-global.ts", code: "TS2591" }]],
+  ["node", [{ fixture: "dom-global.ts", code: "TS2584" }]],
+]);
+
+const typescriptErrorLine =
+  /^src\/typescript\/[a-z]+\/([a-z-]+\/[a-z-]+\.ts)\(\d+,\d+\): error (TS\d+):.*$/;
+
 const labelOf = (diagnostic: Diagnostic) => {
   if (diagnostic.category === "plugin") {
     return `plugin: ${diagnostic.message}`;
@@ -110,6 +160,18 @@ writeFileSync(
   join(consumerDirectory, "biome.json"),
   JSON.stringify({ extends: ["@pleand-inc/style-guide/biome"] }),
 );
+// tsconfig/node.json names the node types, and TypeScript looks type packages up from the
+// consumer's node_modules.
+symlinkSync(
+  join(repositoryRoot, "node_modules", "@types"),
+  join(consumerDirectory, "node_modules", "@types"),
+);
+for (const [preset, tsconfig] of consumerTsconfigByPreset) {
+  writeFileSync(
+    join(consumerDirectory, `tsconfig.${preset}.json`),
+    JSON.stringify(tsconfig),
+  );
+}
 
 after(() => rmSync(consumerDirectory, { recursive: true, force: true }));
 
@@ -140,3 +202,33 @@ test("Biome passes the conforming fixtures on lint, format and import sorting", 
   const report = runBiome("check", join("src", "biome", "conforming"));
   assert.deepEqual(report.diagnostics, []);
 });
+
+for (const [preset, expected] of expectedTypescriptErrorsByPreset) {
+  test(`every TypeScript violation fixture of the ${preset} preset names its error`, () => {
+    const fixtureNames = readdirSync(
+      join(fixturesDirectory, "typescript", preset, "violations"),
+    );
+    assert.deepEqual(
+      fixtureNames.sort(),
+      expected.map(({ fixture }) => fixture).sort(),
+    );
+  });
+
+  test(`TypeScript with the ${preset} preset reports each violation fixture by its own error and nothing else`, () => {
+    const result = spawnSync(
+      typescriptBinary,
+      ["--project", `tsconfig.${preset}.json`, "--pretty", "false"],
+      { cwd: consumerDirectory, encoding: "utf8" },
+    );
+    const reported = result.stdout
+      .split("\n")
+      .filter((line) => typescriptErrorLine.test(line))
+      .map((line) => line.replace(typescriptErrorLine, "$1 $2"));
+    assert.deepEqual(
+      reported.sort(),
+      expected
+        .map(({ fixture, code }) => `violations/${fixture} ${code}`)
+        .sort(),
+    );
+  });
+}

@@ -12,21 +12,28 @@
   },
   "type": "module",
   "exports": {
-    "./biome": "./biome/shared.json"
+    "./biome": "./biome/shared.json",
+    "./tsconfig": "./tsconfig/base.json",
+    "./tsconfig/web": "./tsconfig/web.json",
+    "./tsconfig/node": "./tsconfig/node.json"
   },
   "files": [
     "README.md",
-    "biome"
+    "biome",
+    "tsconfig"
   ],
   "scripts": {
     "test": "node --test \"test/*.test.ts\"",
-    "test:flow": "node --test \"scripts/*.test.mjs\""
+    "test:flow": "node --test \"scripts/*.test.mjs\"",
+    "typecheck": "tsc"
   },
   "peerDependencies": {
     "@biomejs/biome": "2.5.15"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
+    "@types/node": "26.6.4",
+    "typescript": "6.0.3",
     "zod": "4.6.5"
   },
   "license": "MPL-2.0"
