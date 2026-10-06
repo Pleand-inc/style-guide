@@ -8,9 +8,15 @@ Pleand 의 TypeScript 코드 규칙을 담는 저장소입니다. 규칙 문서�
 
 규칙, 설정, 플러그인은 RFC 로 바꿉니다. 절차는 `rfcs/README.md` 에 있습니다.
 
+## 브랜치 흐름
+
+`feat|fix|chore|docs/<slug>` 브랜치에서 `develop` 으로 pull request 를 올리고 squash 로 머지합니다. `develop` 에서 `master` 로 pull request 를 올리고 머지 커밋으로 머지합니다. `master` 는 `develop` 에서 오는 머지 커밋만 받습니다. `master` 와 `develop` 에 직접 push 하지 않습니다.
+
+머지는 `node scripts/pr-merge.mjs <PR 번호>` 로 합니다. 대상에 맞는 방식을 고르고 짝이 틀리면 거부합니다. 판단 로직은 `scripts/branch-flow.mjs` 에 있고 검사는 `npm run test:flow` 입니다.
+
 ## 게시
 
-`v` 로 시작하는 태그를 push 하면 `.github/workflows/publish.yml` 이 패키지를 게시합니다. 태그의 이름은 `v` 뒤에 `package.json` 의 `version` 을 붙인 값과 같아야 합니다.
+`develop` 을 `master` 로 올린 뒤, `v` 로 시작하는 태그를 push 하면 `.github/workflows/publish.yml` 이 패키지를 게시합니다. 태그의 이름은 `v` 뒤에 `package.json` 의 `version` 을 붙인 값과 같아야 합니다.
 
 ## 라이선스
 
