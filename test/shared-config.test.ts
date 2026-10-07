@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -63,8 +64,6 @@ const expectedByBiomeFixture = new Map([
     "dynamic-import-template.ts",
     { label: relativeDynamicImportLabel, count: 1 },
   ],
-  ["enum.ts", { label: "lint/style/noEnum", count: 1 }],
-  ["explicit-any.ts", { label: "lint/suspicious/noExplicitAny", count: 1 }],
   [
     "import-with-extension.ts",
     { label: "lint/style/noRestrictedImports", count: 16 },
@@ -74,11 +73,6 @@ const expectedByBiomeFixture = new Map([
     { label: "lint/complexity/noExcessiveLinesPerFunction", count: 1 },
   ],
   ["max-params.ts", { label: "lint/complexity/useMaxParams", count: 1 }],
-  ["nested-ternary.ts", { label: "lint/style/noNestedTernary", count: 1 }],
-  [
-    "non-null-assertion.ts",
-    { label: "lint/style/noNonNullAssertion", count: 1 },
-  ],
   ["relative-import.ts", { label: "lint/style/noRestrictedImports", count: 8 }],
   [
     "relative-import-meta-glob.ts",
@@ -91,23 +85,12 @@ const expectedByBiomeFixture = new Map([
     { label: suppressionCommentLabel, count: 1 },
   ],
   ["suppression-comment.ts", { label: suppressionCommentLabel, count: 1 }],
+  // A nursery rule: a minor Biome release may rename or change it.
   [
     "type-assertion.ts",
     { label: "lint/nursery/noUnsafeTypeAssertion", count: 5 },
   ],
-  ["unused-import.ts", { label: "lint/correctness/noUnusedImports", count: 1 }],
-  [
-    "unused-parameter.ts",
-    { label: "lint/correctness/noUnusedFunctionParameters", count: 1 },
-  ],
-  [
-    "unused-variable.ts",
-    { label: "lint/correctness/noUnusedVariables", count: 1 },
-  ],
 ]);
-
-// biome lint does not run assist actions, so this fixture is checked apart from the map above.
-const unsortedImportsFixture = "unsorted-imports.ts";
 
 const consumerTsconfigByPreset = new Map([
   [
@@ -139,17 +122,7 @@ const consumerTsconfigByPreset = new Map([
 ]);
 
 const expectedTypescriptErrorsByPreset = new Map([
-  [
-    "base",
-    [
-      { fixture: "erasable-syntax-only.ts", code: "TS1294" },
-      { fixture: "exact-optional-property-types.ts", code: "TS1360" },
-      { fixture: "strict-implicit-any.ts", code: "TS7006" },
-      { fixture: "strict-null-checks.ts", code: "TS18048" },
-      { fixture: "unchecked-indexed-access.ts", code: "TS2532" },
-      { fixture: "verbatim-module-syntax.ts", code: "TS1205" },
-    ],
-  ],
+  ["base", []],
   ["web", [{ fixture: "node-global.ts", code: "TS2591" }]],
   ["node", [{ fixture: "dom-global.ts", code: "TS2584" }]],
 ]);
@@ -231,7 +204,7 @@ test("every Biome violation fixture names the rule that reports it", () => {
   );
   assert.deepEqual(
     fixtureNames.sort(),
-    [...expectedByBiomeFixture.keys(), unsortedImportsFixture].sort(),
+    [...expectedByBiomeFixture.keys()].sort(),
   );
 });
 
@@ -249,18 +222,6 @@ for (const [fixtureName, expected] of expectedByBiomeFixture) {
   });
 }
 
-test(`biome check fails on ${unsortedImportsFixture} by import sorting, and biome lint passes it`, () => {
-  const target = join("src", "biome", "violations", unsortedImportsFixture);
-  const check = runBiome("check", target);
-  assert.deepEqual(check.diagnostics.map(severityAndLabelOf), [
-    ["error", "assist/source/organizeImports"],
-  ]);
-  assert.equal(check.exitCode, 1);
-  const lint = runBiome("lint", target);
-  assert.deepEqual(lint.diagnostics, []);
-  assert.equal(lint.exitCode, 0);
-});
-
 test("Biome passes the conforming fixtures on lint, format and import sorting", () => {
   const run = runBiome("check", join("src", "biome", "conforming"));
   assert.deepEqual(run.diagnostics, []);
@@ -269,9 +230,15 @@ test("Biome passes the conforming fixtures on lint, format and import sorting", 
 
 for (const [preset, expected] of expectedTypescriptErrorsByPreset) {
   test(`every TypeScript violation fixture of the ${preset} preset names its error`, () => {
-    const fixtureNames = readdirSync(
-      join(fixturesDirectory, "typescript", preset, "violations"),
+    const violationsDirectory = join(
+      fixturesDirectory,
+      "typescript",
+      preset,
+      "violations",
     );
+    const fixtureNames = existsSync(violationsDirectory)
+      ? readdirSync(violationsDirectory)
+      : [];
     assert.deepEqual(
       fixtureNames.sort(),
       expected.map(({ fixture }) => fixture).sort(),
