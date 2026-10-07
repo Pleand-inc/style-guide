@@ -46,6 +46,19 @@
               {
                 "group": [".", "..", "./**", "../**"],
                 "message": "Import through the alias declared in tsconfig paths instead of a relative path."
+              },
+              {
+                "group": [
+                  "*/**/*.js",
+                  "*/**/*.mjs",
+                  "*/**/*.cjs",
+                  "*/**/*.jsx",
+                  "*/**/*.ts",
+                  "*/**/*.mts",
+                  "*/**/*.cts",
+                  "*/**/*.tsx"
+                ],
+                "message": "Import paths do not carry a file extension. Drop the extension; the alias or package import map resolves it."
               }
             ]
           }

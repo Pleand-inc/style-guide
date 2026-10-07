@@ -66,6 +66,10 @@ const expectedByBiomeFixture = new Map([
   ["enum.ts", { label: "lint/style/noEnum", count: 1 }],
   ["explicit-any.ts", { label: "lint/suspicious/noExplicitAny", count: 1 }],
   [
+    "import-with-extension.ts",
+    { label: "lint/style/noRestrictedImports", count: 16 },
+  ],
+  [
     "lines-per-function.ts",
     { label: "lint/complexity/noExcessiveLinesPerFunction", count: 1 },
   ],
