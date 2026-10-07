@@ -24,6 +24,7 @@ const reportSchema = z.object({
   diagnostics: z.array(
     z.object({
       category: z.string(),
+      severity: z.string(),
       message: z.string(),
       location: z.object({ path: z.string() }),
     }),
@@ -65,6 +66,10 @@ const expectedByBiomeFixture = new Map([
   ["enum.ts", { label: "lint/style/noEnum", count: 1 }],
   ["explicit-any.ts", { label: "lint/suspicious/noExplicitAny", count: 1 }],
   [
+    "import-with-extension.ts",
+    { label: "lint/style/noRestrictedImports", count: 16 },
+  ],
+  [
     "lines-per-function.ts",
     { label: "lint/complexity/noExcessiveLinesPerFunction", count: 1 },
   ],
@@ -90,7 +95,19 @@ const expectedByBiomeFixture = new Map([
     "type-assertion.ts",
     { label: "lint/nursery/noUnsafeTypeAssertion", count: 5 },
   ],
+  ["unused-import.ts", { label: "lint/correctness/noUnusedImports", count: 1 }],
+  [
+    "unused-parameter.ts",
+    { label: "lint/correctness/noUnusedFunctionParameters", count: 1 },
+  ],
+  [
+    "unused-variable.ts",
+    { label: "lint/correctness/noUnusedVariables", count: 1 },
+  ],
 ]);
+
+// biome lint does not run assist actions, so this fixture is checked apart from the map above.
+const unsortedImportsFixture = "unsorted-imports.ts";
 
 const consumerTsconfigByPreset = new Map([
   [
@@ -147,6 +164,11 @@ const labelOf = (diagnostic: Diagnostic) => {
   return diagnostic.category;
 };
 
+const severityAndLabelOf = (diagnostic: Diagnostic) => [
+  diagnostic.severity,
+  labelOf(diagnostic),
+];
+
 const runBiome = (command: string, target: string) => {
   const result = spawnSync(
     biomeBinary,
@@ -154,7 +176,10 @@ const runBiome = (command: string, target: string) => {
     { cwd: consumerDirectory, encoding: "utf8" },
   );
   assert.notEqual(result.stdout, "", result.stderr);
-  return reportSchema.parse(JSON.parse(result.stdout));
+  return {
+    exitCode: result.status,
+    diagnostics: reportSchema.parse(JSON.parse(result.stdout)).diagnostics,
+  };
 };
 
 // biome/shared.json names its plugins by their path under the consumer's node_modules, so the
@@ -206,26 +231,40 @@ test("every Biome violation fixture names the rule that reports it", () => {
   );
   assert.deepEqual(
     fixtureNames.sort(),
-    [...expectedByBiomeFixture.keys()].sort(),
+    [...expectedByBiomeFixture.keys(), unsortedImportsFixture].sort(),
   );
 });
 
 for (const [fixtureName, expected] of expectedByBiomeFixture) {
-  test(`Biome reports ${fixtureName} ${expected.count} time(s), by its own rule only`, () => {
-    const report = runBiome(
+  test(`Biome fails on ${fixtureName} with ${expected.count} error(s), all from its own rule`, () => {
+    const run = runBiome(
       "lint",
       join("src", "biome", "violations", fixtureName),
     );
     assert.deepEqual(
-      report.diagnostics.map(labelOf),
-      Array.from({ length: expected.count }, () => expected.label),
+      run.diagnostics.map(severityAndLabelOf),
+      Array.from({ length: expected.count }, () => ["error", expected.label]),
     );
+    assert.equal(run.exitCode, 1);
   });
 }
 
+test(`biome check fails on ${unsortedImportsFixture} by import sorting, and biome lint passes it`, () => {
+  const target = join("src", "biome", "violations", unsortedImportsFixture);
+  const check = runBiome("check", target);
+  assert.deepEqual(check.diagnostics.map(severityAndLabelOf), [
+    ["error", "assist/source/organizeImports"],
+  ]);
+  assert.equal(check.exitCode, 1);
+  const lint = runBiome("lint", target);
+  assert.deepEqual(lint.diagnostics, []);
+  assert.equal(lint.exitCode, 0);
+});
+
 test("Biome passes the conforming fixtures on lint, format and import sorting", () => {
-  const report = runBiome("check", join("src", "biome", "conforming"));
-  assert.deepEqual(report.diagnostics, []);
+  const run = runBiome("check", join("src", "biome", "conforming"));
+  assert.deepEqual(run.diagnostics, []);
+  assert.equal(run.exitCode, 0);
 });
 
 for (const [preset, expected] of expectedTypescriptErrorsByPreset) {

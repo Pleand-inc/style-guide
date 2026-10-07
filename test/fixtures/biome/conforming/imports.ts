@@ -1,8 +1,16 @@
+import "@acme/widgets/styles.css";
+import "chart.js";
 import { widget } from "@acme/widgets";
+import widgetData from "@acme/widgets/data.json";
 import type { WidgetOptions } from "@acme/widgets/options";
+import widgetSource from "@acme/widgets/source.ts?raw";
 import { vi } from "vitest";
 
 vi.mock("@acme/widgets");
+
+export const defaultWidgetData = widgetData;
+
+export const widgetSourceText = widgetSource;
 
 export type Widget = import("@acme/widgets").Widget;
 
