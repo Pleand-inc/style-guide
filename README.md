@@ -35,7 +35,7 @@ npx style-guide init
 
 | 파일 | 하는 일 |
 |---|---|
-| `.github/workflows/style-guide-pull-request.yml` | pull request 의 base 와 head 가 브랜치 흐름에 맞는지 검사하고, `style-guide check` 를 돌립니다 |
+| `.github/workflows/style-guide-pull-request.yml` | pull request 의 base 와 head 가 브랜치 흐름에 맞는지 `pull request pairing into <base>` 검사로 확인하고, `style-guide check` 를 `style guide setup` 검사로 돌립니다 |
 | `.github/workflows/style-guide-push.yml` | `master` 와 `develop` 에 올라온 커밋이 머지된 pull request 하나에서 왔는지 검사합니다 |
 | `.claude/skills/style-guide/SKILL.md` | 에이전트가 설치된 패키지의 코드 규칙과 브랜치 흐름을 읽게 하는 스킬입니다 |
 

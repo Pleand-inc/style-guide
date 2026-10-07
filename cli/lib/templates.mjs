@@ -111,7 +111,9 @@ export function pullRequestWorkflowFile() {
   return workflowFile("Style guide pull request", trigger, [
     {
       id: "pull-request-pairing",
-      name: "pull request pairing",
+      // A check belongs to a commit, so a name shared by every base would let a pass from a pull request into
+      // develop satisfy a ruleset that requires this check on master.
+      name: `pull request pairing into ${githubExpression("github.base_ref")}`,
       permissions: ["contents: read"],
       env: [
         `BASE_REF: ${githubExpression("github.base_ref")}`,
