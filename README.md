@@ -24,6 +24,8 @@ npm 이나 yarn 도 같습니다. 토큰은 필요하지 않습니다. `@biomejs
 
 쓰는 저장소의 검사 게이트는 `biome check` 로 돌립니다. `biome check` 는 lint, 포맷, import 순서를 한 번에 확인합니다. `biome lint` 와 `biome format` 은 import 순서를 확인하지 않습니다. 포맷과 import 순서는 `biome check --write` 로 고칩니다. CI 에서는 `biome ci` 를 써도 같은 진단을 냅니다. `biome ci` 는 읽기 전용이라 파일을 고치지 않습니다.
 
+쓰는 저장소의 `biome.json` 이 `style/noRestrictedImports` 의 `patterns` 를 최상위에 적거나 이 규칙의 옵션을 `overrides` 에 적으면, 공용 설정의 상대 경로 묶음과 확장자 묶음이 모두 사라집니다. 예외가 필요하면 공용 설정의 두 묶음을 함께 옮겨 적고, 그 안에 `!` 로 시작하는 예외를 더합니다.
+
 ## 규칙을 바꿀 때
 
 규칙, 설정, 플러그인은 RFC 로 바꿉니다. 절차는 `rfcs/README.md` 에 있습니다.
