@@ -12,7 +12,7 @@
   ],
   "linter": {
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "complexity": {
         "noExcessiveCognitiveComplexity": {
           "level": "error",
@@ -26,6 +26,11 @@
           "level": "error",
           "options": { "max": 3 }
         }
+      },
+      "correctness": {
+        "noUnusedFunctionParameters": "error",
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error"
       },
       "nursery": {
         "noUnsafeTypeAssertion": "error"
@@ -48,6 +53,13 @@
       },
       "suspicious": {
         "noExplicitAny": "error"
+      }
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
       }
     }
   }

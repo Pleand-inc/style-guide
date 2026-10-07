@@ -20,6 +20,10 @@ npm 이나 yarn 도 같습니다. 토큰은 필요하지 않습니다. `@biomejs
 
 `biome/shared.json` 은 플러그인을 쓰는 저장소의 `node_modules` 경로로 가리킵니다. `biome.json` 은 패키지가 설치된 `node_modules` 가 있는 폴더에 둡니다. 쓰는 저장소는 `@biomejs/biome` 2.5.15 와 `typescript` 를 자기 `devDependencies` 에 둡니다.
 
+## 검사
+
+쓰는 저장소의 검사 게이트는 `biome check` 로 돌립니다. `biome check` 는 lint, 포맷, import 순서를 한 번에 확인합니다. `biome lint` 와 `biome format` 은 import 순서를 확인하지 않습니다. 포맷과 import 순서는 `biome check --write` 로 고칩니다. CI 에서는 `biome ci` 를 써도 같은 진단을 냅니다. `biome ci` 는 읽기 전용이라 파일을 고치지 않습니다.
+
 ## 규칙을 바꿀 때
 
 규칙, 설정, 플러그인은 RFC 로 바꿉니다. 절차는 `rfcs/README.md` 에 있습니다.
