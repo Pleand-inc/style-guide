@@ -17,8 +17,67 @@ npm 이나 yarn 도 같습니다. 토큰은 필요하지 않습니다. `@biomejs
 | `rules/README.md`, `rules/<주제>/RULES.md`, `rules/<주제>/EXAMPLES.md` | 코드 규칙과 예시. 주제마다 폴더 하나 | `node_modules/@pleand-inc/style-guide/rules/README.md` 부터 읽습니다 |
 | `biome/shared.json` | Biome 포매터와 lint 설정, 플러그인 | `biome.json` 에 `"extends": ["@pleand-inc/style-guide/biome"]` |
 | `tsconfig/base.json`, `tsconfig/web.json`, `tsconfig/node.json` | TypeScript 설정 | `tsconfig.json` 에 `"extends": "@pleand-inc/style-guide/tsconfig/web"` 또는 `/node` |
+| `cli/` | `style-guide` 명령 | `npx style-guide <명령>` 또는 `node_modules/.bin/style-guide <명령>` |
+| `process/branch-flow.md` | 브랜치 흐름 절차 | `node_modules/@pleand-inc/style-guide/process/` 를 읽습니다 |
 
 `biome/shared.json` 은 플러그인을 쓰는 저장소의 `node_modules` 경로로 가리킵니다. `biome.json` 은 패키지가 설치된 `node_modules` 가 있는 폴더에 둡니다. 쓰는 저장소는 `@biomejs/biome` 2.5.15 와 `typescript` 를 자기 `devDependencies` 에 둡니다.
+
+`style-guide` 명령은 Node 20 이상에서 돌고, 다른 npm 패키지에 기대지 않습니다. `merge` 명령만 GitHub 의 `gh` CLI 를 부릅니다. 명령의 목록은 `npx style-guide --help` 가 출력합니다.
+
+## 설치한 뒤
+
+패키지를 설치하는 것만으로는 저장소에 아무것도 적용되지 않습니다. 저장소 루트에서 아래 명령을 실행합니다.
+
+```sh
+npx style-guide init
+```
+
+`init` 은 아래 세 파일을 만듭니다. 세 파일은 `init` 이 관리하므로 손으로 고치지 않습니다. 파일의 내용이 설치된 패키지가 만드는 내용과 다르면 `init` 이 다시 씁니다.
+
+| 파일 | 하는 일 |
+|---|---|
+| `.github/workflows/style-guide-pull-request.yml` | pull request 의 base 와 head 가 브랜치 흐름에 맞는지 검사하고, `style-guide check` 를 돌립니다 |
+| `.github/workflows/style-guide-push.yml` | `master` 와 `develop` 에 올라온 커밋이 머지된 pull request 하나에서 왔는지 검사합니다 |
+| `.claude/skills/style-guide/SKILL.md` | 에이전트가 설치된 패키지의 코드 규칙과 브랜치 흐름을 읽게 하는 스킬입니다 |
+
+두 워크플로는 저장소의 의존성을 설치하지 않습니다. `package.json` 의 `devDependencies` 에 적힌 버전의 패키지를 `npm exec` 로 받아 실행합니다. 버전은 실행할 때 읽으므로, 버전을 올려도 워크플로 파일은 바뀌지 않습니다.
+
+`init` 은 husky 훅 `.husky/pre-commit` 과 `.husky/pre-push` 를 파일이 없을 때만 만듭니다. 만든 훅에는 아래 줄이 들어갑니다.
+
+| 훅 | 줄 | 막는 것 |
+|---|---|---|
+| `.husky/pre-commit` | `node_modules/.bin/style-guide check-commit` | `master` 와 `develop` 에서 하는 커밋 |
+| `.husky/pre-commit` | `node_modules/.bin/biome check --staged --no-errors-on-unmatched` | 규칙에 어긋난 파일의 커밋 |
+| `.husky/pre-push` | `node_modules/.bin/style-guide check-push` | 브랜치 흐름에 맞지 않는 push |
+
+훅 파일이 이미 있는데 필요한 줄이 없으면, `init` 은 그 파일을 고치지 않습니다. 그 파일을 `incomplete` 로 표시하고 더할 줄을 출력합니다. 주석으로 막아 둔 줄은 없는 줄로 봅니다.
+
+`init` 은 아래 세 가지를 고치지 않고 알려 주기만 합니다. 직접 고친 뒤 `init` 을 다시 실행합니다.
+
+- `devDependencies` 에 `husky` 가 없거나, husky 를 실행하는 `prepare` 스크립트가 없습니다. `husky` 를 설치하고 `scripts` 에 `"prepare": "husky"` 를 적습니다.
+- `biome.json` 과 `biome.jsonc` 가운데 `@pleand-inc/style-guide/biome` 을 가리키는 파일이 없습니다.
+- `devDependencies` 의 `@pleand-inc/style-guide` 가 정확한 버전이나 git spec 으로 고정되어 있지 않습니다. 워크플로가 이 값을 읽어 같은 버전의 명령을 실행합니다.
+
+`init` 은 파일마다 한 일을 `created`, `rewritten`, `unchanged` 가운데 하나로 한 줄씩 출력하고, 손으로 할 일마다 `manual:` 로 시작하는 한 줄을 출력합니다. 손으로 할 일이 남지 않으면 0 으로, 남으면 1 로 끝납니다. 패키지의 버전을 올린 뒤에도 `init` 을 다시 실행합니다.
+
+```sh
+npx style-guide check
+```
+
+`check` 는 `init` 과 같은 항목을 읽기만 합니다. `init` 이 관리하는 파일이 없거나 내용이 다를 때, 훅에 필요한 줄이 없을 때, 손으로 할 일이 남았을 때 그 항목을 출력하고 1 로 끝납니다. `init` 이 만든 pull request 워크플로가 `check` 를 돌리므로, 훅을 지우거나 워크플로를 고친 pull request 는 검사에서 실패합니다.
+
+작업 브랜치의 접두사는 `feat`, `fix`, `chore`, `docs` 이고, 오래 두는 브랜치는 없습니다. 이 두 목록을 바꾸는 저장소는 루트에 `style-guide.config.json` 을 둡니다. 이 파일은 없어도 됩니다.
+
+```json
+{
+  "branchFlow": {
+    "workBranchPrefixes": ["feat", "fix", "chore", "docs"],
+    "longLivedBranches": []
+  }
+}
+```
+
+`longLivedBranches` 에 적은 브랜치에는 push 할 수 있습니다. 이 브랜치는 `develop` 이나 `master` 로 가는 pull request 의 head 가 될 수 없습니다. 파일에 모르는 키가 있거나, 값의 형식이 틀리거나, 접두사 목록이 비어 있으면 명령은 그 키의 이름을 출력하고 2 로 끝납니다.
 
 ## 검사
 
@@ -32,7 +91,7 @@ npm 이나 yarn 도 같습니다. 토큰은 필요하지 않습니다. `@biomejs
 
 ## 브랜치 흐름
 
-작업 브랜치는 `develop` 으로 squash, `develop` 은 `master` 로 머지 커밋입니다. 절차는 `process/branch-flow.md` 에 있고, 머지는 `node scripts/pr-merge.mjs <PR 번호>` 로 합니다.
+작업 브랜치는 `develop` 으로 squash, `develop` 은 `master` 로 머지 커밋입니다. 절차는 `process/branch-flow.md` 에 있습니다. 머지는 이 저장소에서 `node cli/style-guide.mjs merge <PR 번호>` 로 하고, 패키지를 쓰는 저장소에서 `node_modules/.bin/style-guide merge <PR 번호>` 로 합니다.
 
 ## 게시
 
