@@ -22,3 +22,13 @@ Pleand 의 저장소가 쓰는 브랜치 흐름입니다. 이 문서는 절차�
 ## 릴리스
 
 `develop` 을 `master` 로 올리는 pull request 를 머지한 뒤, `v` 뒤에 `package.json` 의 `version` 을 붙인 태그를 push 합니다. 게시 워크플로는 저장소 루트의 `README.md` 에 있습니다.
+
+## 스택 pull request
+
+한 작업이 서로 의존하는 변경 여럿으로 나뉘면 GitHub 의 스택 pull request 를 씁니다. 맨 아래 pull request 는 `develop` 을 base 로 두고, 위의 pull request 는 바로 아래 pull request 의 브랜치를 base 로 둡니다. 검토자는 층마다 그 층의 변경만 봅니다.
+
+- 스택은 `gh stack` 확장으로 만듭니다. `gh stack init --base develop <첫 브랜치>` 로 시작하고, 다음 층은 `gh stack add <브랜치>` 로 더하고, `gh stack submit --open` 으로 push 와 pull request 생성을 한 번에 합니다.
+- 한 층에는 아래 층에 기대는 변경만 둡니다. 다른 관심사가 시작되면 새 층을 만듭니다.
+- 머지는 맨 아래부터 합니다. 아래 pull request 를 머지하면 위의 pull request 가 자동으로 `develop` 을 base 로 바꾸고 서버에서 rebase 됩니다. 머지 방식은 스택이 아닐 때와 같이 squash 이고, 머지는 `node scripts/pr-merge.mjs <번호>` 로 합니다.
+- 스택 안의 모든 pull request 에 `develop` 의 규칙 묶음이 적용됩니다.
+- 아래 층을 고치면 `gh stack rebase` 로 위 층을 따라 올리고 `gh stack push` 로 올립니다.
