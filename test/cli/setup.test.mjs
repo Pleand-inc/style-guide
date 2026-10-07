@@ -137,7 +137,7 @@ describe("the generated pull request workflow", () => {
   it("has the pairing job and the setup job, each with read-only contents", () => {
     assert.match(
       pullRequest,
-      /^ {2}pull-request-pairing:\n {4}name: pull request pairing$/m,
+      /^ {2}pull-request-pairing:\n {4}name: pull request pairing into \$\{\{ github\.base_ref \}\}$/m,
     );
     assert.match(
       pullRequest,
