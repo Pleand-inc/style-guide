@@ -8,8 +8,9 @@ permissions: {}
 
 jobs:
   pull-request-pairing:
-    # The master ruleset requires this check by its name.
-    name: pull request pairing
+    # The master ruleset requires "pull request pairing into master". A check belongs to a commit, not to a pull
+    # request, so a name shared by every base would let a pass from a pull request into develop satisfy it.
+    name: pull request pairing into ${{ github.base_ref }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
