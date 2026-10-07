@@ -1,6 +1,6 @@
 # style-guide
 
-Pleand 의 TypeScript 코드 규칙을 담는 저장소입니다. 규칙 문서와 lint, TypeScript 설정을 `@pleand-inc/style-guide` 패키지로 GitHub Packages 에 게시합니다.
+Pleand 의 TypeScript 코드 규칙을 담는 저장소입니다. 규칙 문서와 lint, TypeScript 설정을 `@pleand-inc/style-guide` 패키지로 npmjs.com 에 게시합니다. 공개 패키지라 설치에 토큰이 필요하지 않습니다.
 
 ## 패키지에 든 것
 
@@ -24,7 +24,9 @@ Pleand 의 TypeScript 코드 규칙을 담는 저장소입니다. 규칙 문서�
 
 ## 게시
 
-`develop` 을 `master` 로 올린 뒤, `v` 로 시작하는 태그를 push 하면 `.github/workflows/publish.yml` 이 패키지를 게시합니다. 태그의 이름은 `v` 뒤에 `package.json` 의 `version` 을 붙인 값과 같아야 합니다.
+`develop` 을 `master` 로 올린 뒤, `v` 로 시작하는 태그를 push 하면 `.github/workflows/publish.yml` 이 패키지를 npmjs.com 에 게시합니다. 태그의 이름은 `v` 뒤에 `package.json` 의 `version` 을 붙인 값과 같아야 합니다. 그 버전이 이미 레지스트리에 있으면 워크플로는 게시를 건너뜁니다.
+
+워크플로는 토큰 없이 npm 의 trusted publishing 으로 게시합니다. npmjs.com 의 패키지 설정에서 trusted publisher 로 이 저장소(`Pleand-inc/style-guide`)와 워크플로 파일 이름(`publish.yml`)이 등록되어 있어야 합니다. 이 설정은 패키지가 레지스트리에 한 번 존재해야 할 수 있어서, 첫 버전은 관리자가 자기 컴퓨터에서 `npm login` 뒤 `npm publish` 로 올렸습니다.
 
 ## 라이선스
 
