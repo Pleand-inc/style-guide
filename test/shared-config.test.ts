@@ -36,12 +36,31 @@ const blockDepthLabel =
   "plugin: Blocks are nested more than 4 levels deep. Move the inner blocks into a function.";
 const suppressionCommentLabel =
   "plugin: This file contains a biome-ignore suppression comment. Remove the comment and fix the code the rule reports.";
+const relativeImportTypeLabel =
+  "plugin: This import() type takes a relative path. Import through the alias declared in tsconfig paths instead.";
+const relativeDynamicImportLabel =
+  "plugin: This dynamic import() builds a relative path. Import through the alias declared in tsconfig paths instead.";
+const relativeViModuleCallLabel =
+  "plugin: This vi.mock, vi.doMock, vi.unmock, vi.doUnmock, vi.importActual or vi.importMock call takes a relative path. Import through the alias declared in tsconfig paths instead.";
+const relativeImportMetaGlobLabel =
+  "plugin: This import.meta.glob() takes a relative pattern. Import through the alias declared in tsconfig paths instead.";
+const dotSegmentLabel =
+  "plugin: This module path has a ./ or ../ segment after the alias. Write the path from the alias without dot segments.";
 
 const expectedByBiomeFixture = new Map([
   ["block-depth.ts", { label: blockDepthLabel, count: 1 }],
   [
     "cognitive-complexity.ts",
     { label: "lint/complexity/noExcessiveCognitiveComplexity", count: 1 },
+  ],
+  ["dot-segment-module-path.ts", { label: dotSegmentLabel, count: 2 }],
+  [
+    "dynamic-import-concatenation.ts",
+    { label: relativeDynamicImportLabel, count: 1 },
+  ],
+  [
+    "dynamic-import-template.ts",
+    { label: relativeDynamicImportLabel, count: 1 },
   ],
   ["enum.ts", { label: "lint/style/noEnum", count: 1 }],
   ["explicit-any.ts", { label: "lint/suspicious/noExplicitAny", count: 1 }],
@@ -55,7 +74,13 @@ const expectedByBiomeFixture = new Map([
     "non-null-assertion.ts",
     { label: "lint/style/noNonNullAssertion", count: 1 },
   ],
-  ["relative-import.ts", { label: "lint/style/noRestrictedImports", count: 7 }],
+  ["relative-import.ts", { label: "lint/style/noRestrictedImports", count: 8 }],
+  [
+    "relative-import-meta-glob.ts",
+    { label: relativeImportMetaGlobLabel, count: 3 },
+  ],
+  ["relative-import-type.ts", { label: relativeImportTypeLabel, count: 3 }],
+  ["relative-vi-mock.ts", { label: relativeViModuleCallLabel, count: 7 }],
   [
     "suppression-block-comment.ts",
     { label: suppressionCommentLabel, count: 1 },

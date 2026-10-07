@@ -1,0 +1,40 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// style/noRestrictedImports covers import, import type, export from and import("literal").
+// These arms cover the forms it does not see. A regex must match the whole text of the node.
+or {
+    TsImportType() as $type where {
+        $type <: r"(?s)(?:typeof )?import\(\s*[\"'`]\.\.?[/\"'`].*",
+        register_diagnostic(
+            span = $type,
+            message = "This import() type takes a relative path. Import through the alias declared in tsconfig paths instead."
+        )
+    },
+    // A path built by an expression cannot be checked statically, so only a template literal or a
+    // string concatenation whose head is ./ or ../ is reported.
+    JsImportCallExpression(arguments = $arguments) where {
+        $arguments <: r"(?s)\(\s*(?:`\.\.?/|[\"']\.\.?/[^\"']*[\"']\s*\+).*",
+        register_diagnostic(
+            span = $arguments,
+            message = "This dynamic import() builds a relative path. Import through the alias declared in tsconfig paths instead."
+        )
+    },
+    // Matched by node rather than by a code snippet so that calls with type arguments match too.
+    JsCallExpression(callee = JsStaticMemberExpression(object = `vi`, member = $method), arguments = $arguments) where {
+        $method <: or { `mock`, `doMock`, `unmock`, `doUnmock`, `importActual`, `importMock` },
+        $arguments <: r"(?s)\(\s*[\"'`]\.\.?[/\"'`].*",
+        register_diagnostic(
+            span = $arguments,
+            message = "This vi.mock, vi.doMock, vi.unmock, vi.doUnmock, vi.importActual or vi.importMock call takes a relative path. Import through the alias declared in tsconfig paths instead."
+        )
+    },
+    // Only the pattern argument is checked: Vite does not accept an alias in the base option.
+    JsCallExpression(callee = `import.meta.glob`, arguments = $arguments) where {
+        $arguments <: r"(?s)\(\s*\[?\s*[\"'`]!?\.\.?/.*",
+        register_diagnostic(
+            span = $arguments,
+            message = "This import.meta.glob() takes a relative pattern. Import through the alias declared in tsconfig paths instead."
+        )
+    }
+}
