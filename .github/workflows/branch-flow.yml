@@ -1,0 +1,28 @@
+name: Branch flow
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+jobs:
+  pull-request-pairing:
+    # The master ruleset requires "pull request pairing into master". A check belongs to a commit, not to a pull
+    # request, so a name shared by every base would let a pass from a pull request into develop satisfy it.
+    name: pull request pairing into ${{ github.base_ref }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+
+      - run: node cli/style-guide.mjs check-pull-request
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
