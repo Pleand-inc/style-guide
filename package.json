@@ -1,6 +1,6 @@
 {
   "name": "@pleand-inc/style-guide",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "Pleand code standards: the rules, shared lint and TypeScript configuration, and the RFCs that change them",
   "author": "Pleand Inc.",
   "repository": {
@@ -12,7 +12,7 @@
   },
   "type": "module",
   "bin": {
-    "style-guide": "./cli/style-guide.mjs"
+    "style-guide": "cli/style-guide.mjs"
   },
   "exports": {
     "./biome": "./biome/shared.json",
