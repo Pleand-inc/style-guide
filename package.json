@@ -11,6 +11,9 @@
     "access": "public"
   },
   "type": "module",
+  "bin": {
+    "style-guide": "./cli/style-guide.mjs"
+  },
   "exports": {
     "./biome": "./biome/shared.json",
     "./tsconfig": "./tsconfig/base.json",
@@ -20,12 +23,14 @@
   "files": [
     "README.md",
     "biome",
+    "cli",
+    "process",
     "tsconfig",
     "rules"
   ],
   "scripts": {
     "test": "node --test \"test/*.test.ts\"",
-    "test:flow": "node --test \"scripts/*.test.mjs\"",
+    "test:flow": "node --test \"test/cli/*.test.mjs\"",
     "typecheck": "tsc"
   },
   "peerDependencies": {
