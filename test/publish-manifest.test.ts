@@ -19,8 +19,9 @@ const versionLine = /"version": "[^"]+"/;
 
 after(() => rmSync(publishDirectory, { recursive: true, force: true }));
 
-// `npm pack` copies package.json as it is, but `npm publish` sends the registry a manifest it has corrected and
-// drops an entry it rejects. A package can therefore pack with its `bin` and publish without it.
+// `npm pack` copies package.json as it is, but `npm publish` sends the registry a manifest it has corrected, so the
+// registry can hold values the other tests never installed. Writing package.json in the corrected form keeps the
+// two the same.
 test("npm publish sends the registry the manifest as written, with nothing corrected", () => {
   const manifestText = readFileSync(
     join(repositoryRoot, "package.json"),
