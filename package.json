@@ -1,6 +1,6 @@
 {
   "name": "@pleand-inc/style-guide",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Pleand code standards: the rules, shared lint and TypeScript configuration, and the RFCs that change them",
   "author": "Pleand Inc.",
   "repository": {
