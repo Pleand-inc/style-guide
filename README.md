@@ -2,6 +2,14 @@
 
 Pleand 의 TypeScript 코드 규칙을 담는 저장소입니다. 규칙 문서와 lint, TypeScript 설정을 `@pleand-inc/style-guide` 패키지로 npmjs.com 에 게시합니다. 공개 패키지라 설치에 토큰이 필요하지 않습니다.
 
+## 설치
+
+```sh
+pnpm add -D -E @biomejs/biome@2.5.15 @pleand-inc/style-guide
+```
+
+npm 이나 yarn 도 같습니다. 토큰은 필요하지 않습니다. `@biomejs/biome` 은 이 패키지의 peerDependency 라 같은 버전을 함께 설치합니다.
+
 ## 패키지에 든 것
 
 | 경로 | 내용 | 받는 방법 |
