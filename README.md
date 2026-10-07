@@ -14,7 +14,7 @@ npm 이나 yarn 도 같습니다. 토큰은 필요하지 않습니다. `@biomejs
 
 | 경로 | 내용 | 받는 방법 |
 |---|---|---|
-| `rules/RULES.md`, `rules/EXAMPLES.md` | 코드 규칙과 예시 | `node_modules/@pleand-inc/style-guide/rules/` 를 읽습니다 |
+| `rules/README.md`, `rules/<주제>/RULES.md`, `rules/<주제>/EXAMPLES.md` | 코드 규칙과 예시. 주제마다 폴더 하나 | `node_modules/@pleand-inc/style-guide/rules/README.md` 부터 읽습니다 |
 | `biome/shared.json` | Biome 포매터와 lint 설정, 플러그인 | `biome.json` 에 `"extends": ["@pleand-inc/style-guide/biome"]` |
 | `tsconfig/base.json`, `tsconfig/web.json`, `tsconfig/node.json` | TypeScript 설정 | `tsconfig.json` 에 `"extends": "@pleand-inc/style-guide/tsconfig/web"` 또는 `/node` |
 
