@@ -25,7 +25,7 @@ import {
 } from "../../cli/lib/templates.mjs";
 import { REPOSITORY_ROOT } from "./helpers.mjs";
 
-const RULE_FILES = ["EXAMPLES.md", "RULES.md"];
+const RULE_FILES = ["README.md", "typescript/types/RULES.md"];
 const PRE_COMMIT_PATH = ".husky/pre-commit";
 const PRE_PUSH_PATH = ".husky/pre-push";
 const CHECK_COMMIT_LINE = "node_modules/.bin/style-guide check-commit";
@@ -222,21 +222,21 @@ describe("the generated skill", () => {
         line.startsWith("- `node_modules/@pleand-inc/style-guide/rules/"),
       );
     assert.deepEqual(listed, [
-      "- `node_modules/@pleand-inc/style-guide/rules/EXAMPLES.md`",
-      "- `node_modules/@pleand-inc/style-guide/rules/RULES.md`",
+      "- `node_modules/@pleand-inc/style-guide/rules/README.md`",
+      "- `node_modules/@pleand-inc/style-guide/rules/typescript/types/RULES.md`",
     ]);
-    const nested = skillFile(["RULES.md", "typescript/TYPES.md"]);
+    const other = skillFile(["git/branch-flow/RULES.md"]);
     assert.match(
-      nested,
-      /^- `node_modules\/@pleand-inc\/style-guide\/rules\/typescript\/TYPES\.md`$/m,
+      other,
+      /^- `node_modules\/@pleand-inc\/style-guide\/rules\/git\/branch-flow\/RULES\.md`$/m,
     );
-    assert.doesNotMatch(nested, /EXAMPLES\.md/);
+    assert.doesNotMatch(other, /typescript\/types\/RULES\.md/);
   });
 
   it("points at the branch flow, the merge command, and says rules are not edited here", () => {
     assert.match(
       skill,
-      /`node_modules\/@pleand-inc\/style-guide\/process\/branch-flow\.md`/,
+      /`node_modules\/@pleand-inc\/style-guide\/rules\/git\/branch-flow\/RULES\.md`/,
     );
     assert.match(skill, /`node_modules\/\.bin\/style-guide merge <번호>`/);
     assert.match(skill, /규칙은 이 저장소에서 고치지 않습니다\./);
