@@ -26,9 +26,7 @@ npm 이나 yarn 도 같습니다. 토큰은 필요하지 않습니다. `@biomejs
 
 ## 브랜치 흐름
 
-`feat|fix|chore|docs/<slug>` 브랜치에서 `develop` 으로 pull request 를 올리고 squash 로 머지합니다. `develop` 에서 `master` 로 pull request 를 올리고 머지 커밋으로 머지합니다. `master` 는 `develop` 에서 오는 머지 커밋만 받습니다. `master` 와 `develop` 에 직접 push 하지 않습니다.
-
-머지는 `node scripts/pr-merge.mjs <PR 번호>` 로 합니다. 대상에 맞는 방식을 고르고 짝이 틀리면 거부합니다. 판단 로직은 `scripts/branch-flow.mjs` 에 있고 검사는 `npm run test:flow` 입니다.
+작업 브랜치는 `develop` 으로 squash, `develop` 은 `master` 로 머지 커밋입니다. 절차는 `process/branch-flow.md` 에 있고, 머지는 `node scripts/pr-merge.mjs <PR 번호>` 로 합니다.
 
 ## 게시
 
