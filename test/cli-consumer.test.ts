@@ -177,8 +177,8 @@ test("the tarball ships the command line, the rules and the branch flow, and no 
   const shipped = filesUnder(installedPackageDirectory);
   for (const path of [
     "cli/style-guide.mjs",
-    "process/branch-flow.md",
-    "rules/RULES.md",
+    "rules/git/branch-flow/RULES.md",
+    "rules/typescript/types/RULES.md",
   ]) {
     assert.ok(shipped.includes(path), `${path} is not in the tarball`);
   }
@@ -194,7 +194,6 @@ test("the tarball ships the command line, the rules and the branch flow, and no 
       "biome",
       "cli",
       "package.json",
-      "process",
       "rules",
       "tsconfig",
     ],
@@ -289,7 +288,7 @@ test("the generated skill lists the rule files the installed package holds", () 
     listed,
     filesUnder(join(installedPackageDirectory, "rules")),
   );
-  assert.ok(listed.includes("RULES.md"));
+  assert.ok(listed.includes("typescript/types/RULES.md"));
   for (const path of listed) {
     assert.equal(
       existsSync(join(installedPackageDirectory, "rules", path)),
@@ -297,7 +296,9 @@ test("the generated skill lists the rule files the installed package holds", () 
     );
   }
   assert.equal(
-    existsSync(join(installedPackageDirectory, "process", "branch-flow.md")),
+    existsSync(
+      join(installedPackageDirectory, "rules", "git", "branch-flow", "RULES.md"),
+    ),
     true,
   );
 });

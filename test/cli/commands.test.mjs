@@ -178,7 +178,7 @@ describe("style-guide init and check: a repository that needs nothing by hand", 
       .filter((path) => path !== "")
       .map((path) => relative(rulesDirectory, path).split(sep).join("/"));
     assert.deepEqual(listed, present.sort());
-    assert.ok(listed.includes("RULES.md"));
+    assert.ok(listed.includes("typescript/types/RULES.md"));
   });
 });
 

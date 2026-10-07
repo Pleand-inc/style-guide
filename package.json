@@ -24,7 +24,6 @@
     "README.md",
     "biome",
     "cli",
-    "process",
     "tsconfig",
     "rules"
   ],

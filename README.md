@@ -14,11 +14,10 @@ npm 이나 yarn 도 같습니다. 토큰은 필요하지 않습니다. `@biomejs
 
 | 경로 | 내용 | 받는 방법 |
 |---|---|---|
-| `rules/README.md`, `rules/<주제>/RULES.md`, `rules/<주제>/EXAMPLES.md` | 코드 규칙과 예시. 주제마다 폴더 하나 | `node_modules/@pleand-inc/style-guide/rules/README.md` 부터 읽습니다 |
+| `rules/README.md`, `rules/typescript/<주제>/`, `rules/git/<주제>/` | TypeScript 코드 규칙과 git 규칙(브랜치 흐름, 변경 이력과 티켓). 주제마다 폴더 하나에 `RULES.md` 와, 예시가 있으면 `EXAMPLES.md` | `node_modules/@pleand-inc/style-guide/rules/README.md` 부터 읽습니다 |
 | `biome/shared.json` | Biome 포매터와 lint 설정, 플러그인 | `biome.json` 에 `"extends": ["@pleand-inc/style-guide/biome"]` |
 | `tsconfig/base.json`, `tsconfig/web.json`, `tsconfig/node.json` | TypeScript 설정 | `tsconfig.json` 에 `"extends": "@pleand-inc/style-guide/tsconfig/web"` 또는 `/node` |
 | `cli/` | `style-guide` 명령 | `npx style-guide <명령>` 또는 `node_modules/.bin/style-guide <명령>` |
-| `process/branch-flow.md` | 브랜치 흐름 절차 | `node_modules/@pleand-inc/style-guide/process/` 를 읽습니다 |
 
 `biome/shared.json` 은 플러그인을 쓰는 저장소의 `node_modules` 경로로 가리킵니다. `biome.json` 은 패키지가 설치된 `node_modules` 가 있는 폴더에 둡니다. 쓰는 저장소는 `@biomejs/biome` 2.5.15 와 `typescript` 를 자기 `devDependencies` 에 둡니다.
 
@@ -91,7 +90,7 @@ npx style-guide check
 
 ## 브랜치 흐름
 
-작업 브랜치는 `develop` 으로 squash, `develop` 은 `master` 로 머지 커밋입니다. 절차는 `process/branch-flow.md` 에 있습니다. 머지는 이 저장소에서 `node cli/style-guide.mjs merge <PR 번호>` 로 하고, 패키지를 쓰는 저장소에서 `node_modules/.bin/style-guide merge <PR 번호>` 로 합니다.
+작업 브랜치는 `develop` 으로 squash, `develop` 은 `master` 로 머지 커밋입니다. 절차는 `rules/git/branch-flow/RULES.md` 에 있습니다. 머지는 이 저장소에서 `node cli/style-guide.mjs merge <PR 번호>` 로 하고, 패키지를 쓰는 저장소에서 `node_modules/.bin/style-guide merge <PR 번호>` 로 합니다.
 
 ## 게시
 

@@ -159,15 +159,16 @@ export function skillFile(ruleFiles) {
     "",
     `이 저장소는 \`${PACKAGE_NAME}\` 패키지의 코드 규칙과 브랜치 흐름을 따릅니다.`,
     "",
-    "## 코드 규칙",
+    "## 규칙",
     "",
-    "코드 규칙은 아래 파일에 있습니다. 코드를 쓰거나 고치거나 검토하기 전에 읽습니다.",
+    "규칙은 아래 파일에 있습니다. `typescript/` 아래는 TypeScript 코드 규칙이고, `git/` 아래는 브랜치 흐름과 변경 이력의 규칙입니다. " +
+      "코드를 쓰거나 고치거나 검토하기 전에 읽습니다.",
     "",
     ...ruleFiles.map((file) => `- \`${INSTALLED_PACKAGE_PATH}/rules/${file}\``),
     "",
     "## 브랜치 흐름",
     "",
-    `브랜치 흐름은 \`${INSTALLED_PACKAGE_PATH}/process/branch-flow.md\` 에 있습니다. ` +
+    `브랜치 흐름은 \`${INSTALLED_PACKAGE_PATH}/rules/git/branch-flow/RULES.md\` 에 있습니다. ` +
       "브랜치를 만들거나 pull request 를 올리거나 머지하기 전에 읽습니다.",
     "",
     `- 머지는 \`${INSTALLED_BIN_PATH} merge <번호>\` 로 합니다. \`gh pr merge\` 를 직접 쓰지 않습니다.`,
