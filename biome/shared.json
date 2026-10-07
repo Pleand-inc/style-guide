@@ -6,7 +6,9 @@
   },
   "plugins": [
     "./node_modules/@pleand-inc/style-guide/biome/plugins/max-block-depth.grit",
-    "./node_modules/@pleand-inc/style-guide/biome/plugins/no-suppression-comment.grit"
+    "./node_modules/@pleand-inc/style-guide/biome/plugins/no-suppression-comment.grit",
+    "./node_modules/@pleand-inc/style-guide/biome/plugins/no-relative-module-paths.grit",
+    "./node_modules/@pleand-inc/style-guide/biome/plugins/no-dot-segments-in-module-paths.grit"
   ],
   "linter": {
     "rules": {

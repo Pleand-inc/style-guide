@@ -1,0 +1,11 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// A path that starts with a dot is relative, and style/noRestrictedImports already reports it.
+JsModuleSource() as $source where {
+    $source <: r"(?s)[\"'`][^.].*/\.\.?(?:/|[\"'`]).*",
+    register_diagnostic(
+        span = $source,
+        message = "This module path has a ./ or ../ segment after the alias. Write the path from the alias without dot segments."
+    )
+}
