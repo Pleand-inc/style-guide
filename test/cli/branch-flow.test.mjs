@@ -767,6 +767,71 @@ describe("carriedCommitLines", () => {
   });
 });
 
+describe("carriedCommitLines: the subject it prints", () => {
+  const PREFIX = "  2222222 no merged pull request: ";
+  const ESCAPE = String.fromCharCode(0x1b);
+  const lineOf = (subject) =>
+    carriedCommitLines([{ sha: MERGE, subject, pulls: [] }], 1)[1];
+
+  it("removes C0 controls, DEL and C1 controls, line breaks among them", () => {
+    const controls = [
+      0x00, 0x07, 0x09, 0x0a, 0x0d, 0x1f, 0x7f, 0x80, 0x9b, 0x9f,
+    ]
+      .map((code) => String.fromCharCode(code))
+      .join("");
+    assert.equal(
+      lineOf(`fix: ${ESCAPE}[31mred${ESCAPE}[0m${controls} text`),
+      `${PREFIX}fix: [31mred[0m text`,
+    );
+  });
+
+  it("keeps the characters on either side of the control ranges", () => {
+    const kept = [0x20, 0x7e, 0xa0, 0xa1]
+      .map((code) => String.fromCharCode(code))
+      .join("");
+    assert.equal(lineOf(`a${kept}b`), `${PREFIX}a${kept}b`);
+  });
+
+  it("prints a subject of exactly 100 characters whole", () => {
+    const subject = "x".repeat(100);
+    assert.equal(lineOf(subject), `${PREFIX}${subject}`);
+  });
+
+  it("cuts a longer subject to 100 characters and ends the line with how many there were", () => {
+    assert.equal(
+      lineOf("x".repeat(101)),
+      `${PREFIX}${"x".repeat(100)} [subject cut at 100 of 101 characters]`,
+    );
+    assert.equal(
+      lineOf(`${"y".repeat(100)}${"z".repeat(63)}`),
+      `${PREFIX}${"y".repeat(100)} [subject cut at 100 of 163 characters]`,
+    );
+  });
+
+  it("counts the characters that are left once the control characters are gone", () => {
+    const subject = `${ESCAPE.repeat(5)}${"x".repeat(100)}`;
+    assert.equal(lineOf(subject), `${PREFIX}${"x".repeat(100)}`);
+  });
+
+  it("counts code points, so that the cut does not split one", () => {
+    const astral = String.fromCodePoint(0x1f600);
+    assert.equal(
+      lineOf(`${"x".repeat(99)}${astral}tail`),
+      `${PREFIX}${"x".repeat(99)}${astral} [subject cut at 100 of 104 characters]`,
+    );
+  });
+
+  it("puts its own marker only after exactly 100 characters, which a subject that imitates the marker cannot have", () => {
+    const imitation = " [subject cut at 100 of 163 characters]";
+    const subject = `${"x".repeat(100 - imitation.length)}${imitation}`;
+    assert.equal(lineOf(subject), `${PREFIX}${subject}`);
+    assert.equal(
+      lineOf(`x${subject}`),
+      `${PREFIX}x${subject.slice(0, 99)} [subject cut at 100 of 101 characters]`,
+    );
+  });
+});
+
 describe("AFTER_SEVERAL_COMMITS", () => {
   it("says on one line that the push is reverted before the next release or accepted by the owner", () => {
     assert.equal(

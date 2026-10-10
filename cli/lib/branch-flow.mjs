@@ -62,6 +62,9 @@ const HEADS = "refs/heads/";
 const TAGS = "refs/tags/";
 const ALL_ZEROS = /^0+$/;
 const SHORT_SHA_LENGTH = 7;
+const PRINTED_SUBJECT_LIMIT = 100;
+// The general category Cc: the C0 controls U+0000 to U+001F, DEL U+007F and the C1 controls U+0080 to U+009F.
+const CONTROL_CHARACTERS = /\p{Cc}/gu;
 const PARENT_COUNT_BY_BRANCH = { master: 2, develop: 1 };
 const MERGE_KIND_BY_BRANCH = {
   master: "merge commits",
@@ -303,6 +306,20 @@ export function carriedSeveralCommits({ before, forced, commit }) {
   return !forced && !ALL_ZEROS.test(before) && commit.parents[0] !== before;
 }
 
+/**
+ * Whoever pushed wrote the subject, and the line goes to a CI log: the subject is printed without control characters
+ * and cut to PRINTED_SUBJECT_LIMIT code points. Only a cut puts the marker after exactly that many characters: a
+ * subject printed whole is no longer than that in all, so words in it that look like the marker follow fewer.
+ * @param {string} subject
+ * @returns {string}
+ */
+function printedSubject(subject) {
+  const characters = Array.from(subject.replace(CONTROL_CHARACTERS, ""));
+  if (characters.length <= PRINTED_SUBJECT_LIMIT) return characters.join("");
+  const kept = characters.slice(0, PRINTED_SUBJECT_LIMIT).join("");
+  return `${kept} [subject cut at ${PRINTED_SUBJECT_LIMIT} of ${characters.length} characters]`;
+}
+
 /** @param {CarriedCommit} carried */
 function carriedCommitLine({ sha, subject, pulls }) {
   const pull = mergedPullOf(sha, pulls);
@@ -310,7 +327,7 @@ function carriedCommitLine({ sha, subject, pulls }) {
     pull === undefined
       ? "no merged pull request"
       : `pull request #${pull.number}`;
-  return `  ${sha.slice(0, SHORT_SHA_LENGTH)} ${origin}: ${subject}`;
+  return `  ${sha.slice(0, SHORT_SHA_LENGTH)} ${origin}: ${printedSubject(subject)}`;
 }
 
 /**

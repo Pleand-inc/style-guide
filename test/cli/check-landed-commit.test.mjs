@@ -355,6 +355,39 @@ describe("style-guide check-landed-commit: a push that moved the branch by sever
   });
 });
 
+describe("style-guide check-landed-commit: the subject it prints for a commit", () => {
+  it("prints the first line without control characters and cuts it at 100 characters", async () => {
+    const [escapeCharacter, tab, bell] = [0x1b, 0x09, 0x07].map((code) =>
+      String.fromCharCode(code),
+    );
+    const colored = `fix: ${escapeCharacter}[31mred${escapeCharacter}[0m${tab}and${bell} more`;
+    const event = pushEvent({
+      commits: [
+        { id: FIRST_LAYER, message: `${colored}\n\nSeen in review.` },
+        { id: AFTER, message: "x".repeat(163) },
+      ],
+    });
+    const result = await runCheck(event, {
+      [COMMIT_PATH]: { body: commitWith([FIRST_LAYER]) },
+      [PULLS_PATH]: { body: [] },
+      [pullsPathOf(FIRST_LAYER)]: { body: [] },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.equal(
+      result.stderr,
+      [
+        SEVERAL_COMMITS,
+        "The push event lists 2 commit(s):",
+        "  4444444 no merged pull request: fix: [31mred[0mand more",
+        `  2222222 no merged pull request: ${"x".repeat(100)} [subject cut at 100 of 163 characters]`,
+        WHAT_HAPPENS_NEXT,
+        "",
+      ].join("\n"),
+    );
+  });
+});
+
 describe("style-guide check-landed-commit: the commits of a push that it does not name", () => {
   it("lists the first 20 commits and asks for the pull requests of those only", async () => {
     const earlier = Array.from({ length: 22 }, (_, index) =>
