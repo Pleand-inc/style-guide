@@ -3,6 +3,7 @@
 import { isRecord } from "./values.mjs";
 
 /** @typedef {import("./branch-flow.mjs").LandedPull} LandedPull */
+/** @typedef {import("./branch-flow.mjs").PushedCommit} PushedCommit */
 /**
  * @typedef {object} PushEvent
  * @property {"master" | "develop"} branch
@@ -21,6 +22,7 @@ import { isRecord } from "./values.mjs";
  */
 
 const HEADS = "refs/heads/";
+const LINE_BREAK = /\r\n|\r|\n/;
 
 /**
  * @param {unknown} value
@@ -92,6 +94,31 @@ export function readPushEvent(payload) {
     forced: requireBoolean(event, "forced", description),
     deleted: requireBoolean(event, "deleted", description),
   };
+}
+
+/**
+ * @param {unknown} entry
+ * @returns {PushedCommit}
+ */
+function readPushedCommit(entry) {
+  const description = "a commit of the push event";
+  const commit = requireRecord(entry, description);
+  const message = requireString(commit, "message", description);
+  const [subject = ""] = message.split(LINE_BREAK, 1);
+  return { sha: requireString(commit, "id", description), subject };
+}
+
+/**
+ * readPushEvent leaves `commits` unread, so a push the flow accepts never fails on that list.
+ * @param {unknown} payload the parsed file at `GITHUB_EVENT_PATH` of a `push` workflow run
+ * @returns {PushedCommit[]} the commits the event lists for the push, in the event's order
+ */
+export function readPushedCommits(payload) {
+  const description = "the push event";
+  const event = requireRecord(payload, description);
+  return requireArray(event.commits, `${description}'s 'commits'`).map(
+    readPushedCommit,
+  );
 }
 
 /**
