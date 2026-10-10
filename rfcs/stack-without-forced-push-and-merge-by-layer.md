@@ -47,7 +47,7 @@ What happens next: the push is reverted before the next release, or the reposito
 - 한 번 push 한 브랜치는 강제 push 하지 않고, 위 층은 아래 층의 변경을 `git merge` 로 받습니다.
 - 스택은 `style-guide merge` 로 한 층씩 머지하고, 웹의 "Merge stack" 버튼을 쓰지 않습니다.
 - 이미 열려 있는 pull request 는 `gh stack link --base develop` 로 스택으로 묶습니다.
-- `check-landed-commit` 은 판정을 그대로 두고, 여러 커밋을 올린 push 의 메시지에 무엇이 올라왔는지와 다음 절차를 적습니다.
+- `check-landed-commit` 은 판정을 그대로 두고, 여러 커밋을 올린 push 의 메시지에 그 push 로 올라온 커밋과 pull request 의 번호, 스택은 한 층씩 머지한다는 안내를 적습니다.
 
 지금 규칙과 명령은 이 결정과 아래처럼 어긋납니다.
 
