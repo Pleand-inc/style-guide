@@ -51,7 +51,7 @@ Pleand 의 저장소가 쓰는 브랜치 흐름입니다. 이 문서는 절차�
 
 - `check-pull-request` 는 세 가지 짝을 통과시킵니다. 작업 브랜치에서 `develop` 으로, `develop` 에서 `master` 로, 스택의 한 층인 작업 브랜치에서 작업 브랜치로 가는 pull request 입니다.
 - pull request 워크플로는 `check-pull-request` 와 `check` 를 `pull request pairing into <base>` 검사 하나에서 이 순서로 돌립니다. `check-pull-request` 가 실패하면 `check` 는 돌지 않습니다. 이 검사를 필수로 건 저장소에서는 `check` 의 실패도 머지를 막습니다.
-- pull request 워크플로는 pull request 를 열거나, 다시 열거나, head 에 push 할 때 돕니다. 제목, 본문, base 를 고친 것만으로는 돌지 않습니다. base 를 바꾼 뒤에는 head 에 다음 커밋을 push 하거나 pull request 를 닫았다 다시 열 때 새 base 의 검사가 돕니다.
+- pull request 워크플로는 pull request 를 열거나, 다시 열거나, head 에 push 할 때 돕니다. 제목이나 본문을 고친 것만으로는 돌지 않습니다. base 를 바꾼 뒤 새 base 의 검사가 돌지 않았으면 head 에 다음 커밋을 push 하거나 pull request 를 닫았다 다시 엽니다.
 - `check-landed-commit` 은 브랜치가 이미 움직인 뒤에 돕니다. push 를 막지는 못하고, 흐름을 벗어난 커밋의 검사를 실패로 남깁니다. `develop` 의 커밋은 부모가 하나여야 하고, `master` 의 커밋은 부모가 둘이고 head 가 `develop` 인 pull request 의 머지 커밋이어야 합니다. 강제 push 와 브랜치 생성도 실패합니다.
 - 태그는 `check-push` 를 통과합니다.
 - 작업 브랜치의 접두사와 오래 두는 브랜치는 저장소 루트의 `style-guide.config.json` 에서 바꿉니다. 오래 두는 브랜치에는 push 할 수 있습니다. 이 브랜치는 `develop` 이나 `master` 로 가는 pull request 의 head 가 될 수 없습니다.

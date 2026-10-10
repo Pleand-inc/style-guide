@@ -116,8 +116,8 @@ function workflowFile(name, trigger, jobs) {
 
 export function pullRequestWorkflowFile() {
   // No `edited`: a job skipped by an `if` reports success, so filtering edits down to base changes would let a
-  // skipped run cover an earlier failure of the same check on the same commit. After a base change the check for the
-  // new base runs on the next push or reopen.
+  // skipped run cover an earlier failure of the same check on the same commit. A push or a reopen after a base change
+  // runs the check for the new base.
   const trigger = ["pull_request:", "  types: [opened, reopened, synchronize]"];
   return workflowFile("Style guide pull request", trigger, [
     {

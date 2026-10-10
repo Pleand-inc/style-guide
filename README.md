@@ -39,7 +39,7 @@ npx style-guide init
 | `.github/workflows/style-guide-push.yml` | `master` 와 `develop` 에 올라온 커밋이 머지된 pull request 하나에서 왔는지 검사합니다 |
 | `.claude/skills/style-guide/SKILL.md` | 에이전트가 설치된 패키지의 코드 규칙과 브랜치 흐름을 읽게 하는 스킬입니다 |
 
-pull request 워크플로는 pull request 를 열거나, 다시 열거나, head 에 push 할 때 돌고, 제목, 본문, base 를 고친 것만으로는 돌지 않습니다. base 를 바꾼 뒤에는 head 에 다음 커밋을 push 하거나 pull request 를 닫았다 다시 열 때 새 base 의 검사가 돕니다. 짝이 흐름에 맞지 않으면 그 검사는 `style-guide check` 를 돌리지 않고 실패합니다.
+pull request 워크플로는 pull request 를 열거나, 다시 열거나, head 에 push 할 때 돌고, 제목이나 본문을 고친 것만으로는 돌지 않습니다. base 를 바꾼 뒤 새 base 의 검사가 돌지 않았으면 head 에 다음 커밋을 push 하거나 pull request 를 닫았다 다시 엽니다. 짝이 흐름에 맞지 않으면 그 검사는 `style-guide check` 를 돌리지 않고 실패합니다.
 
 두 워크플로는 저장소의 의존성을 설치하지 않습니다. `package.json` 의 `devDependencies` 에 적힌 버전의 패키지를 `npm exec` 로 받아 실행합니다. 버전은 실행할 때 읽으므로, 버전을 올려도 워크플로 파일은 바뀌지 않습니다.
 
