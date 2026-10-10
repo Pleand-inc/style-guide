@@ -1,12 +1,17 @@
 // The content of the files `style-guide init` owns in a consuming repository (no I/O).
 
 /**
+ * @typedef {object} WorkflowStep
+ * @property {string} command the style-guide subcommand the step runs
+ * @property {string[]} env
+ */
+
+/**
  * @typedef {object} WorkflowJob
  * @property {string} id
  * @property {string} name the check name GitHub shows on the commit
  * @property {string[]} permissions
- * @property {string[]} env
- * @property {string} command the style-guide subcommand the job runs
+ * @property {WorkflowStep[]} steps run in order; a step that fails ends the job, and the steps after it do not run
  */
 
 export const PACKAGE_NAME = "@pleand-inc/style-guide";
@@ -58,10 +63,21 @@ function indent(lines, width) {
   return lines.map((line) => " ".repeat(width) + line);
 }
 
+/** @param {WorkflowStep} step */
+function stepLines(step) {
+  // Without this npm would download the Biome peer dependency just to run a command that never calls Biome.
+  const env = step.env.concat('NPM_CONFIG_LEGACY_PEER_DEPS: "true"');
+  return [
+    `      - name: style-guide ${step.command}`,
+    "        env:",
+    ...indent(env, 10),
+    "        run: |",
+    ...indent(workflowRunLines(step.command), 10),
+  ];
+}
+
 /** @param {WorkflowJob} job */
 function jobLines(job) {
-  // Without this npm would download the Biome peer dependency just to run a command that never calls Biome.
-  const env = job.env.concat('NPM_CONFIG_LEGACY_PEER_DEPS: "true"');
   return [
     `  ${job.id}:`,
     `    name: ${job.name}`,
@@ -75,12 +91,7 @@ function jobLines(job) {
     `      - uses: ${SETUP_NODE_ACTION}`,
     "        with:",
     "          node-version: lts/*",
-    "",
-    `      - name: style-guide ${job.command}`,
-    "        env:",
-    ...indent(env, 10),
-    "        run: |",
-    ...indent(workflowRunLines(job.command), 10),
+    ...job.steps.flatMap((step) => ["", ...stepLines(step)]),
   ];
 }
 
@@ -104,29 +115,28 @@ function workflowFile(name, trigger, jobs) {
 }
 
 export function pullRequestWorkflowFile() {
-  const trigger = [
-    "pull_request:",
-    "  types: [opened, reopened, synchronize, edited]",
-  ];
+  // No `edited`: a job skipped by an `if` reports success, so filtering edits down to base changes would let a
+  // skipped run cover an earlier failure of the same check on the same commit. After a base change the check for the
+  // new base runs on the next push or reopen.
+  const trigger = ["pull_request:", "  types: [opened, reopened, synchronize]"];
   return workflowFile("Style guide pull request", trigger, [
     {
       id: "pull-request-pairing",
       // A check belongs to a commit, so a name shared by every base would let a pass from a pull request into
-      // develop satisfy a ruleset that requires this check on master.
+      // develop satisfy a ruleset that requires this check on master. The setup check runs in the same job because
+      // a private repository is billed each job's time rounded up to a whole minute.
       name: `pull request pairing into ${githubExpression("github.base_ref")}`,
       permissions: ["contents: read"],
-      env: [
-        `BASE_REF: ${githubExpression("github.base_ref")}`,
-        `HEAD_REF: ${githubExpression("github.head_ref")}`,
+      steps: [
+        {
+          command: "check-pull-request",
+          env: [
+            `BASE_REF: ${githubExpression("github.base_ref")}`,
+            `HEAD_REF: ${githubExpression("github.head_ref")}`,
+          ],
+        },
+        { command: "check", env: [] },
       ],
-      command: "check-pull-request",
-    },
-    {
-      id: "style-guide-setup",
-      name: "style guide setup",
-      permissions: ["contents: read"],
-      env: [],
-      command: "check",
     },
   ]);
 }
@@ -138,8 +148,12 @@ export function pushWorkflowFile() {
       id: "landed-commit",
       name: "landed commit",
       permissions: ["contents: read", "pull-requests: read"],
-      env: [`GITHUB_TOKEN: ${githubExpression("github.token")}`],
-      command: "check-landed-commit",
+      steps: [
+        {
+          command: "check-landed-commit",
+          env: [`GITHUB_TOKEN: ${githubExpression("github.token")}`],
+        },
+      ],
     },
   ]);
 }
