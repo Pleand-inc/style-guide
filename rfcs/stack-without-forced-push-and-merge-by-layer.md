@@ -12,7 +12,7 @@
 아래 층을 고친 뒤의 항목입니다.
 
 - 지금: `gh stack rebase` 로 위 층을 따라 올리고 `gh stack push` 로 올립니다. 아래 층이 머지된 뒤에는 `gh stack sync` 로 서버의 rebase 를 받아 옵니다.
-- 이 RFC 뒤: 위 층의 브랜치에서 아래 층의 브랜치를 `git merge` 로 받고, 강제 옵션 없이 `git push` 로 올립니다. 층의 이력을 선형으로 만드는 rebase 는 서버가 합니다. 서버가 rebase 한 브랜치는 `git fetch` 뒤 로컬 브랜치를 원격 브랜치에 맞추고, 맞추기 전의 로컬 브랜치에서는 push 하지 않습니다. push 한 브랜치는 강제 push 하지 않습니다. `gh stack submit`, `gh stack push`, `gh stack sync`, `gh stack rebase` 뒤에 하는 push 는 쓰지 않습니다.
+- 이 RFC 뒤: 위 층의 브랜치에서 아래 층의 브랜치를 `git merge` 로 받고, 강제 옵션 없이 `git push` 로 올립니다. 층의 이력을 선형으로 만드는 rebase 는 서버가 합니다. 서버가 rebase 한 브랜치는 `git fetch` 뒤 로컬 브랜치를 원격 브랜치에 맞추고, 맞추기 전의 로컬 브랜치에서는 push 하지 않습니다. push 한 브랜치는 강제 push 하지 않습니다. `gh stack submit`, `gh stack push`, `gh stack sync` 를 쓰지 않고, `gh stack rebase` 뒤의 push 도 하지 않습니다.
 
 머지 항목입니다.
 
@@ -40,7 +40,7 @@ What happens next: the push is reverted before the next release, or the reposito
 
 ## 이유
 
-저장소 관리자가 2026-10-09 에 네 가지를 결정했습니다.
+저장소 관리자는 2026-10-08 에 push 한 브랜치의 강제 push 를 금지했고, 2026-10-09 에 아래 네 가지를 담은 계획을 승인했습니다. 관리자가 승인한 것은 계획이고, 항목의 문장은 이 제안 문서를 쓴 쪽이 적었습니다.
 
 - 한 번 push 한 브랜치는 강제 push 하지 않고, 위 층은 아래 층의 변경을 `git merge` 로 받습니다.
 - 스택은 `style-guide merge` 로 한 층씩 머지하고, 웹의 "Merge stack" 버튼을 쓰지 않습니다.
@@ -95,7 +95,7 @@ GitHub Docs 의 문서입니다. 2026-10-10 에 읽었습니다.
 관찰입니다.
 
 - 2026-10-08 에 이 패키지를 쓰는 저장소 하나에서, 열려 있던 pull request 다섯을 `gh stack link --base develop` 로 묶고 웹의 "Rebase stack" 으로 선형으로 만든 뒤 웹의 "Merge stack" 버튼으로 머지했습니다. squash 커밋 다섯이 push 한 번으로 `develop` 에 올라왔고, 그 push 의 `landed commit` 검사가 실패했고, head 브랜치 다섯이 지워지지 않고 남았습니다.
-- 같은 날 비공개 저장소 하나에서, 위 층들이 머지 커밋을 가진 다섯 층짜리 스택에 "Rebase stack" 을 누르자 서버가 층마다 그 층의 머지 커밋이 아닌 커밋을 아래 층 위에 다시 적용했습니다. 한 번 본 것이고 되풀이해 확인하지 않았습니다. 문서에 적힌 동작이 아닙니다.
+- 그 스택에는 아래 층을 `git merge` 로 받아 머지 커밋을 가진 층이 있었습니다. "Rebase stack" 을 누르자 서버가 층마다 그 층의 머지 커밋이 아닌 커밋을 아래 층 위에 다시 적용했습니다. 한 번 본 것이고 되풀이해 확인하지 않았습니다. 문서에 적힌 동작이 아닙니다.
 
 이 변경의 검사입니다.
 

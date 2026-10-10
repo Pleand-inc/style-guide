@@ -35,7 +35,7 @@ Pleand 의 저장소가 쓰는 브랜치 흐름입니다. 이 문서는 절차�
 - 한 층에는 아래 층에 기대는 변경만 둡니다. 다른 관심사가 시작되면 새 층을 만듭니다.
 - 머지는 맨 아래부터 한 층씩 합니다. 스택 안의 pull request 는 `gh pr merge` 로 머지되지 않고 스택용 머지로만 됩니다. `style-guide merge <맨 아래 pull request 의 번호>` 가 스택을 알아보고 `gh stack merge <번호> --squash --yes` 를 부릅니다. 아래 pull request 를 머지하면 위의 pull request 가 자동으로 `develop` 을 base 로 바꾸고 서버에서 rebase 됩니다. 머지된 아래 브랜치는 자동으로 지워지지 않으므로, 머지 명령이 pull request 가 머지된 것을 확인한 뒤 지웁니다. `gh stack` 에는 `--repo` 옵션이 없어서 스택 안의 pull request 는 그 저장소의 체크아웃 안에서만 머지됩니다. GitHub 웹의 머지 상자에 있는 "Merge stack" 버튼은 쓰지 않습니다. 이 버튼은 스택의 모든 층을 push 한 번으로 `develop` 에 올립니다. `check-landed-commit` 은 그 push 를 실패로 남기고, 머지된 층의 브랜치는 지워지지 않습니다.
 - 스택 안의 모든 pull request 에 `develop` 의 규칙 묶음이 적용됩니다.
-- 아래 층을 고치면 위 층의 브랜치에서 아래 층의 브랜치를 `git merge` 로 받고, 강제 옵션 없이 `git push` 로 올립니다. 층의 이력을 선형으로 만드는 rebase 는 서버가 합니다. 아래 pull request 가 머지되면 GitHub 가 위 층을 rebase 하고, GitHub 웹의 머지 상자에서 "Rebase stack" 을 누르면 그때 rebase 합니다. 서버가 rebase 한 브랜치는 `git fetch` 뒤 로컬 브랜치를 원격 브랜치에 맞춥니다. 맞추기 전의 로컬 브랜치에서는 push 하지 않습니다. push 한 브랜치는 강제 push 하지 않습니다. 그래서 `gh stack submit`, `gh stack push`, `gh stack sync`, `gh stack rebase` 뒤에 하는 push 는 쓰지 않습니다.
+- 아래 층을 고치면 위 층의 브랜치에서 아래 층의 브랜치를 `git merge` 로 받고, 강제 옵션 없이 `git push` 로 올립니다. 층의 이력을 선형으로 만드는 rebase 는 서버가 합니다. 아래 pull request 가 머지되면 GitHub 가 위 층을 rebase 하고, GitHub 웹의 머지 상자에서 "Rebase stack" 을 누르면 그때 rebase 합니다. 서버가 rebase 한 브랜치는 `git fetch` 뒤 로컬 브랜치를 원격 브랜치에 맞춥니다. 맞추기 전의 로컬 브랜치에서는 push 하지 않습니다. push 한 브랜치는 강제 push 하지 않습니다. 그래서 `gh stack submit`, `gh stack push`, `gh stack sync` 를 쓰지 않고, `gh stack rebase` 뒤의 push 도 하지 않습니다.
 
 ## 저장소에 적용하기
 
