@@ -42,12 +42,26 @@
  * @property {{ sha: string, parents: string[] }} commit the branch tip after the push
  * @property {LandedPull[]} pulls the pull requests GitHub associates with that commit
  */
+/**
+ * @typedef {object} PushedCommit a commit the push event lists
+ * @property {string} sha
+ * @property {string} subject the first line of the commit message
+ */
+/**
+ * @typedef {PushedCommit & { pulls: LandedPull[] }} CarriedCommit a pushed commit with the pull requests GitHub
+ *   associates with it
+ */
 
 export const PROTECTED_BRANCHES = Object.freeze(["master", "develop"]);
+export const LISTED_COMMIT_LIMIT = 20;
+export const AFTER_SEVERAL_COMMITS =
+  "What happens next: the push is reverted before the next release, " +
+  "or the repository's owner checks its content and accepts it.";
 
 const HEADS = "refs/heads/";
 const TAGS = "refs/tags/";
 const ALL_ZEROS = /^0+$/;
+const SHORT_SHA_LENGTH = 7;
 const PARENT_COUNT_BY_BRANCH = { master: 2, develop: 1 };
 const MERGE_KIND_BY_BRANCH = {
   master: "merge commits",
@@ -270,6 +284,51 @@ export function pullRequestPairProblem({ base, head }, branchFlow) {
 }
 
 /**
+ * @param {string} sha
+ * @param {LandedPull[]} pulls the pull requests GitHub associates with the commit
+ * @returns {LandedPull | undefined} the merged pull request whose merge commit the commit is
+ */
+function mergedPullOf(sha, pulls) {
+  return pulls.find(
+    (candidate) => candidate.merged && candidate.mergeCommitSha === sha,
+  );
+}
+
+/**
+ * @param {Pick<LandedCommit, "before" | "forced" | "commit">} landed
+ * @returns {boolean} whether the push, neither forced nor the creation of the branch, moved the branch by more than
+ *   one first-parent commit; landedCommitProblem gives that reason exactly then
+ */
+export function carriedSeveralCommits({ before, forced, commit }) {
+  return !forced && !ALL_ZEROS.test(before) && commit.parents[0] !== before;
+}
+
+/** @param {CarriedCommit} carried */
+function carriedCommitLine({ sha, subject, pulls }) {
+  const pull = mergedPullOf(sha, pulls);
+  const origin =
+    pull === undefined
+      ? "no merged pull request"
+      : `pull request #${pull.number}`;
+  return `  ${sha.slice(0, SHORT_SHA_LENGTH)} ${origin}: ${subject}`;
+}
+
+/**
+ * What the check prints under the problem of a push for which carriedSeveralCommits is true. A commit is named with
+ * a pull request only when it is that merged pull request's merge commit.
+ * @param {CarriedCommit[]} listed the first commits the push event lists, at most LISTED_COMMIT_LIMIT
+ * @param {number} total how many commits the push event lists
+ * @returns {string[]} a line that counts the commits, a line for each listed one, and a line that counts the rest
+ */
+export function carriedCommitLines(listed, total) {
+  const lines = [`The push event lists ${total} commit(s):`];
+  lines.push(...listed.map(carriedCommitLine));
+  if (total > listed.length)
+    lines.push(`  ... and ${total - listed.length} more`);
+  return lines;
+}
+
+/**
  * Checks what a push left at the tip of master or develop. Merging a pull request moves the branch by exactly one
  * first-parent commit, the pull request's merge commit, so anything else did not come through a pull request.
  * @param {LandedCommit} landed
@@ -283,12 +342,10 @@ export function landedCommitProblem(
   if (forced) return `${branch} was force-pushed to ${commit.sha}`;
   if (ALL_ZEROS.test(before))
     return `${branch} was created at ${commit.sha}, not moved by a pull request`;
-  if (commit.parents[0] !== before) {
+  if (carriedSeveralCommits({ before, forced, commit })) {
     return `${branch} moved from ${before} to ${commit.sha} by more than one first-parent commit`;
   }
-  const pull = pulls.find(
-    (candidate) => candidate.merged && candidate.mergeCommitSha === commit.sha,
-  );
+  const pull = mergedPullOf(commit.sha, pulls);
   if (pull === undefined)
     return `${commit.sha} on ${branch} did not come from a merged pull request`;
   if (pull.base !== branch)

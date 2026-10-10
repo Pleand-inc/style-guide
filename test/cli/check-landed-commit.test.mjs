@@ -16,10 +16,23 @@ import {
 const BEFORE = "1111111111111111111111111111111111111111";
 const AFTER = "2222222222222222222222222222222222222222";
 const DEVELOP_TIP = "3333333333333333333333333333333333333333";
+const FIRST_LAYER = "4444444444444444444444444444444444444444";
+const SECOND_LAYER = "5555555555555555555555555555555555555555";
 const ZERO = "0000000000000000000000000000000000000000";
 const TOKEN = "test-token-not-a-credential";
 const COMMIT_PATH = `/repos/acme/web/commits/${AFTER}`;
 const PULLS_PATH = `${COMMIT_PATH}/pulls?per_page=100`;
+const SEVERAL_COMMITS =
+  `style-guide check-landed-commit: develop moved from ${BEFORE} to ${AFTER} ` +
+  "by more than one first-parent commit";
+const WHAT_HAPPENS_NEXT =
+  "What happens next: the push is reverted before the next release, " +
+  "or the repository's owner checks its content and accepts it.";
+
+/** @param {string} sha */
+function pullsPathOf(sha) {
+  return `/repos/acme/web/commits/${sha}/pulls?per_page=100`;
+}
 
 /** @param {Record<string, { status?: number, body: unknown }>} responseByPath */
 async function startGitHub(responseByPath) {
@@ -149,14 +162,37 @@ const PUSHES_OUTSIDE_THE_FLOW = [
     pulls: [mergedPull({})],
     reason: /develop was created/,
   },
-  {
-    name: "a push that moved the branch by two commits",
-    event: pushEvent({}),
-    commit: commitWith([DEVELOP_TIP]),
-    pulls: [mergedPull({})],
-    reason: /by more than one first-parent commit/,
-  },
 ];
+
+// Three layers of a stack squashed onto develop by one push: each commit is the merge commit of its own pull request.
+const STACK_LANDED_AT_ONCE = pushEvent({
+  commits: [
+    {
+      id: FIRST_LAYER,
+      message: "feat: add the login form (#11)\n\nThe form posts to /login.",
+    },
+    { id: SECOND_LAYER, message: "feat: validate the login form (#12)" },
+    { id: AFTER, message: "feat: remember the last login (#13)" },
+  ],
+});
+const STACK_RESPONSES = {
+  [COMMIT_PATH]: { body: commitWith([SECOND_LAYER]) },
+  [PULLS_PATH]: {
+    body: [mergedPull({ number: 13, head: { ref: "feat/remember" } })],
+  },
+  [pullsPathOf(FIRST_LAYER)]: {
+    body: [mergedPull({ number: 11, merge_commit_sha: FIRST_LAYER })],
+  },
+  [pullsPathOf(SECOND_LAYER)]: {
+    body: [
+      mergedPull({
+        number: 12,
+        head: { ref: "feat/validate" },
+        merge_commit_sha: SECOND_LAYER,
+      }),
+    ],
+  },
+};
 
 describe("style-guide check-landed-commit: pushes that follow the flow", () => {
   it("passes a squash merge of a work branch on develop, asking for the commit and its pull requests", async () => {
@@ -200,6 +236,16 @@ describe("style-guide check-landed-commit: pushes that follow the flow", () => {
       0,
     );
   });
+
+  it("passes without reading the commits the event lists", async () => {
+    const result = await runCheck(pushEvent({ commits: "not a list" }), {
+      [COMMIT_PATH]: { body: commitWith([BEFORE]) },
+      [PULLS_PATH]: { body: [mergedPull({})] },
+    });
+    assert.equal(result.stderr, "");
+    assert.equal(result.status, 0);
+    assert.equal(result.requests.length, 2);
+  });
 });
 
 describe("style-guide check-landed-commit: pushes outside the flow", () => {
@@ -219,6 +265,8 @@ describe("style-guide check-landed-commit: pushes outside the flow", () => {
       assert.equal(result.stdout, "");
       assert.match(result.stderr, /^style-guide check-landed-commit: /);
       assert.match(result.stderr, reason);
+      assert.doesNotMatch(result.stderr.trimEnd(), /\n/);
+      assert.equal(result.requests.length, 2);
     });
   }
 
@@ -243,6 +291,132 @@ describe("style-guide check-landed-commit: pushes outside the flow", () => {
       /this check runs on pushes to master and develop only/,
     );
     assert.deepEqual(result.requests, []);
+  });
+});
+
+describe("style-guide check-landed-commit: a push that moved the branch by several commits", () => {
+  it("fails, naming each commit with its merged pull request and what happens next", async () => {
+    const result = await runCheck(STACK_LANDED_AT_ONCE, STACK_RESPONSES);
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.equal(
+      result.stderr,
+      [
+        SEVERAL_COMMITS,
+        "The push event lists 3 commit(s):",
+        "  4444444 pull request #11: feat: add the login form (#11)",
+        "  5555555 pull request #12: feat: validate the login form (#12)",
+        "  2222222 pull request #13: feat: remember the last login (#13)",
+        WHAT_HAPPENS_NEXT,
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("asks for the pull requests of each listed commit once, the tip included", async () => {
+    const { requests } = await runCheck(STACK_LANDED_AT_ONCE, STACK_RESPONSES);
+    assert.deepEqual(
+      requests.map(({ method, path }) => `${method} ${path}`),
+      [
+        `GET ${COMMIT_PATH}`,
+        `GET ${PULLS_PATH}`,
+        `GET ${pullsPathOf(FIRST_LAYER)}`,
+        `GET ${pullsPathOf(SECOND_LAYER)}`,
+      ],
+    );
+  });
+
+  it("says which commits are not the merge commit of a merged pull request", async () => {
+    const event = pushEvent({
+      commits: [
+        { id: FIRST_LAYER, message: "wip" },
+        { id: AFTER, message: "fix a typo\r\n\r\nSeen in review." },
+      ],
+    });
+    const result = await runCheck(event, {
+      [COMMIT_PATH]: { body: commitWith([FIRST_LAYER]) },
+      [PULLS_PATH]: { body: [] },
+      [pullsPathOf(FIRST_LAYER)]: {
+        body: [mergedPull({ merge_commit_sha: null, merged_at: null })],
+      },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(
+      result.stderr,
+      [
+        SEVERAL_COMMITS,
+        "The push event lists 2 commit(s):",
+        "  4444444 no merged pull request: wip",
+        "  2222222 no merged pull request: fix a typo",
+        WHAT_HAPPENS_NEXT,
+        "",
+      ].join("\n"),
+    );
+  });
+});
+
+describe("style-guide check-landed-commit: the commits of a push that it does not name", () => {
+  it("lists the first 20 commits and asks for the pull requests of those only", async () => {
+    const earlier = Array.from({ length: 22 }, (_, index) =>
+      (index + 0xa0).toString(16).repeat(20),
+    );
+    const shas = [...earlier, AFTER];
+    const commits = shas.map((id, index) => ({
+      id,
+      message: `chore: step ${index + 1}`,
+    }));
+    const responses = {
+      [COMMIT_PATH]: { body: commitWith([DEVELOP_TIP]) },
+      [PULLS_PATH]: { body: [] },
+    };
+    for (const sha of shas) responses[pullsPathOf(sha)] = { body: [] };
+    const result = await runCheck(pushEvent({ commits }), responses);
+    assert.equal(result.status, 1);
+    const lines = result.stderr.trimEnd().split("\n");
+    assert.equal(lines.length, 24);
+    assert.equal(lines[1], "The push event lists 23 commit(s):");
+    assert.equal(lines[2], "  a0a0a0a no merged pull request: chore: step 1");
+    assert.equal(lines[21], "  b3b3b3b no merged pull request: chore: step 20");
+    assert.equal(lines[22], "  ... and 3 more");
+    assert.equal(lines[23], WHAT_HAPPENS_NEXT);
+    assert.equal(result.requests.length, 22);
+  });
+
+  it("keeps the failure and what happens next when the event does not list the commits", async () => {
+    const result = await runCheck(pushEvent({}), {
+      [COMMIT_PATH]: { body: commitWith([DEVELOP_TIP]) },
+      [PULLS_PATH]: { body: [mergedPull({})] },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(
+      result.stderr,
+      [
+        SEVERAL_COMMITS,
+        "The commits the push carried could not be listed: the push event's 'commits' is not an array",
+        WHAT_HAPPENS_NEXT,
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("keeps the failure and what happens next when GitHub refuses a pull request lookup", async () => {
+    const result = await runCheck(STACK_LANDED_AT_ONCE, {
+      ...STACK_RESPONSES,
+      [pullsPathOf(SECOND_LAYER)]: {
+        status: 502,
+        body: { message: "Server Error" },
+      },
+    });
+    assert.equal(result.status, 1);
+    const lines = result.stderr.trimEnd().split("\n");
+    assert.equal(lines.length, 3);
+    assert.equal(lines[0], SEVERAL_COMMITS);
+    assert.match(
+      lines[1],
+      /^The commits the push carried could not be listed: GET \S+: HTTP 502$/,
+    );
+    assert.equal(lines[2], WHAT_HAPPENS_NEXT);
+    assert.doesNotMatch(result.stderr, new RegExp(TOKEN));
   });
 });
 

@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  AFTER_SEVERAL_COMMITS,
+  carriedCommitLines,
+  carriedSeveralCommits,
   classifyPushTarget,
   commitProblem,
   decideMerge,
@@ -654,6 +657,124 @@ describe("landedCommitProblem: how the branch moved", () => {
       landedProblem(mergeOnMaster({ commit: squash })),
       /#8 landed on master as a commit with 1 parent\(s\): master takes merge commits/,
     );
+  });
+});
+
+describe("carriedSeveralCommits", () => {
+  it("is true only for a push that moved the branch by more than one first-parent commit", () => {
+    const commit = { sha: MERGE, parents: [DEVELOP_TIP] };
+    assert.equal(carriedSeveralCommits(squashOnDevelop({ commit })), true);
+    assert.equal(carriedSeveralCommits(squashOnDevelop({})), false);
+    assert.equal(carriedSeveralCommits(mergeOnMaster({})), false);
+  });
+
+  it("is false for a force push and for the creation of the branch, which fail for their own reason", () => {
+    const commit = { sha: MERGE, parents: [DEVELOP_TIP] };
+    for (const overrides of [{ forced: true }, { before: ZERO }]) {
+      const landed = squashOnDevelop({ commit, ...overrides });
+      assert.equal(carriedSeveralCommits(landed), false);
+      assert.doesNotMatch(
+        landedProblem(landed),
+        /more than one first-parent commit/,
+      );
+    }
+  });
+
+  it("is true exactly when landedCommitProblem gives that reason, on one line", () => {
+    const commit = { sha: MERGE, parents: [DEVELOP_TIP] };
+    for (const landed of [
+      squashOnDevelop({ commit }),
+      squashOnDevelop({ commit, pulls: [] }),
+      mergeOnMaster({ commit: { sha: MERGE, parents: [DEVELOP_TIP, BEFORE] } }),
+    ]) {
+      assert.equal(carriedSeveralCommits(landed), true);
+      assert.equal(
+        landedProblem(landed),
+        `${landed.branch} moved from ${BEFORE} to ${MERGE} by more than one first-parent commit`,
+      );
+    }
+  });
+});
+
+describe("carriedCommitLines", () => {
+  const FIRST = "4444444444444444444444444444444444444444";
+  const squashOf = (number, sha) => [
+    mergedPull({ number, mergeCommitSha: sha }),
+  ];
+
+  it("counts the commits and names each by short sha, merged pull request and subject", () => {
+    const listed = [
+      {
+        sha: FIRST,
+        subject: "feat: add the login form (#11)",
+        pulls: squashOf(11, FIRST),
+      },
+      {
+        sha: MERGE,
+        subject: "feat: validate it (#12)",
+        pulls: squashOf(12, MERGE),
+      },
+    ];
+    assert.deepEqual(carriedCommitLines(listed, 2), [
+      "The push event lists 2 commit(s):",
+      "  4444444 pull request #11: feat: add the login form (#11)",
+      "  2222222 pull request #12: feat: validate it (#12)",
+    ]);
+  });
+
+  it("names a pull request only when the commit is that pull request's merge commit", () => {
+    const pullsWithoutThisMerge = [
+      [],
+      [mergedPull({ merged: false, mergeCommitSha: null })],
+      [mergedPull({ mergeCommitSha: DEVELOP_TIP })],
+      [mergedPull({ merged: false, mergeCommitSha: MERGE })],
+    ];
+    for (const pulls of pullsWithoutThisMerge) {
+      assert.deepEqual(
+        carriedCommitLines([{ sha: MERGE, subject: "wip", pulls }], 1),
+        [
+          "The push event lists 1 commit(s):",
+          "  2222222 no merged pull request: wip",
+        ],
+      );
+    }
+  });
+
+  it("finds the merged pull request among the others GitHub lists for the commit", () => {
+    const pulls = [mergedPull({ number: 6, merged: false }), mergedPull({})];
+    assert.deepEqual(
+      carriedCommitLines([{ sha: MERGE, subject: "feat: a (#7)", pulls }], 1),
+      [
+        "The push event lists 1 commit(s):",
+        "  2222222 pull request #7: feat: a (#7)",
+      ],
+    );
+  });
+
+  it("says how many commits the event lists beyond the listed ones", () => {
+    const listed = [{ sha: MERGE, subject: "chore: step 1", pulls: [] }];
+    assert.deepEqual(carriedCommitLines(listed, 4), [
+      "The push event lists 4 commit(s):",
+      "  2222222 no merged pull request: chore: step 1",
+      "  ... and 3 more",
+    ]);
+  });
+
+  it("gives only the count when the event lists no commit", () => {
+    assert.deepEqual(carriedCommitLines([], 0), [
+      "The push event lists 0 commit(s):",
+    ]);
+  });
+});
+
+describe("AFTER_SEVERAL_COMMITS", () => {
+  it("says on one line that the push is reverted before the next release or accepted by the owner", () => {
+    assert.equal(
+      AFTER_SEVERAL_COMMITS,
+      "What happens next: the push is reverted before the next release, " +
+        "or the repository's owner checks its content and accepts it.",
+    );
+    assert.doesNotMatch(AFTER_SEVERAL_COMMITS, /\n/);
   });
 });
 
