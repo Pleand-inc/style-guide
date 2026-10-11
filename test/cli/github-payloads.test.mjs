@@ -7,6 +7,7 @@ import {
   readPullRequestView,
   readPulls,
   readPushEvent,
+  readPushedCommits,
 } from "../../cli/lib/github-payloads.mjs";
 
 const BEFORE = "1111111111111111111111111111111111111111";
@@ -42,6 +43,13 @@ describe("readPushEvent", () => {
     );
   });
 
+  it("does not read the commits the event lists", () => {
+    assert.equal(
+      readPushEvent(pushEvent({ commits: "not a list" })).after,
+      AFTER,
+    );
+  });
+
   for (const ref of [
     "refs/heads/feat/login",
     "refs/tags/master",
@@ -70,6 +78,52 @@ describe("readPushEvent", () => {
     assert.throws(
       () => readPushEvent(pushEvent({ forced: "false" })),
       /no boolean 'forced'/,
+    );
+  });
+});
+
+describe("readPushedCommits", () => {
+  it("reads each commit's sha and the first line of its message, in the event's order", () => {
+    const commits = [
+      { id: BEFORE, message: "feat: add the login form (#11)\n\nBody." },
+      { id: AFTER, message: "fix a typo", distinct: true },
+    ];
+    assert.deepEqual(readPushedCommits(pushEvent({ commits })), [
+      { sha: BEFORE, subject: "feat: add the login form (#11)" },
+      { sha: AFTER, subject: "fix a typo" },
+    ]);
+    assert.deepEqual(readPushedCommits(pushEvent({ commits: [] })), []);
+  });
+
+  it("ends the subject at a carriage return too, so that a commit stays on one line", () => {
+    const subjectOf = (message) =>
+      readPushedCommits(pushEvent({ commits: [{ id: AFTER, message }] }))[0]
+        .subject;
+    assert.equal(subjectOf("one\r\ntwo"), "one");
+    assert.equal(subjectOf("one\rtwo"), "one");
+    assert.equal(subjectOf(""), "");
+  });
+
+  it("rejects an event that does not list its commits", () => {
+    assert.throws(
+      () => readPushedCommits(null),
+      /the push event is not an object/,
+    );
+    assert.throws(
+      () => readPushedCommits(pushEvent({})),
+      /the push event's 'commits' is not an array/,
+    );
+    assert.throws(
+      () => readPushedCommits(pushEvent({ commits: ["x"] })),
+      /a commit of the push event is not an object/,
+    );
+    assert.throws(
+      () => readPushedCommits(pushEvent({ commits: [{ message: "m" }] })),
+      /a commit of the push event has no string 'id'/,
+    );
+    assert.throws(
+      () => readPushedCommits(pushEvent({ commits: [{ id: AFTER }] })),
+      /a commit of the push event has no string 'message'/,
     );
   });
 });

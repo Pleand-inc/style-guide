@@ -31,11 +31,11 @@ Pleand 의 저장소가 쓰는 브랜치 흐름입니다. 이 문서는 절차�
 
 한 작업이 서로 의존하는 변경 여럿으로 나뉘면 GitHub 의 스택 pull request 를 씁니다. 맨 아래 pull request 는 `develop` 을 base 로 두고, 위의 pull request 는 바로 아래 pull request 의 브랜치를 base 로 둡니다. 검토자는 층마다 그 층의 변경만 봅니다.
 
-- 스택은 `gh stack` 확장으로 만듭니다. `gh stack init --base develop <첫 브랜치>` 로 시작하고, 다음 층은 `gh stack add <브랜치>` 로 더하고, `gh stack submit --auto` 로 push 와 pull request 생성을 한 번에 합니다. `--auto` 는 pull request 를 draft 로 만들고, 층마다 준비가 끝나면 `gh pr ready <번호>` 로 풉니다.
+- 스택의 층마다 작업 브랜치를 하나 둡니다. 맨 아래 층의 브랜치는 `develop` 에서 만들고, 위 층의 브랜치는 바로 아래 층의 브랜치에서 만듭니다. 층마다 브랜치를 `git push` 로 올리고 `gh pr create --draft` 로 pull request 를 엽니다. 위 층의 pull request 는 `--base <아래 층의 브랜치>` 를 붙여 엽니다. 그다음 `gh stack` 확장의 `gh stack link --base develop <맨 아래부터 맨 위까지의 번호>` 로 pull request 들을 스택으로 묶습니다. 이 명령은 API 로 스택을 만들고, base 가 이 순서와 다른 pull request 의 base 를 고칩니다. 이미 열려 있는 pull request 도 같은 명령으로 묶습니다. 번호로 준 pull request 는 로컬 브랜치가 없어도 묶입니다. 스택에 층을 더할 때는 맨 위에 더하고, `gh stack link <스택 번호> <더한 pull request 의 번호>` 로 붙입니다. 스택 번호는 GitHub 의 스택 화면에 보이는 번호입니다. 층마다 준비가 끝나면 `gh pr ready <번호>` 로 draft 를 풉니다.
 - 한 층에는 아래 층에 기대는 변경만 둡니다. 다른 관심사가 시작되면 새 층을 만듭니다.
-- 머지는 맨 아래부터 합니다. 스택 안의 pull request 는 `gh pr merge` 로 머지되지 않고 스택용 머지로만 됩니다. `style-guide merge <번호>` 가 스택을 알아보고 `gh stack merge <번호> --squash --yes` 를 부릅니다. 아래 pull request 를 머지하면 위의 pull request 가 자동으로 `develop` 을 base 로 바꾸고 서버에서 rebase 됩니다. 머지된 아래 브랜치는 자동으로 지워지지 않으므로, 머지 명령이 pull request 가 머지된 것을 확인한 뒤 지웁니다. `gh stack` 에는 `--repo` 옵션이 없어서 스택 안의 pull request 는 그 저장소의 체크아웃 안에서만 머지됩니다.
+- 머지는 맨 아래부터 한 층씩 합니다. 스택 안의 pull request 는 `gh pr merge` 로 머지되지 않고 스택용 머지로만 됩니다. `style-guide merge <맨 아래 pull request 의 번호>` 가 스택을 알아보고 `gh stack merge <번호> --squash --yes` 를 부릅니다. 아래 pull request 를 머지하면 위의 pull request 가 자동으로 `develop` 을 base 로 바꾸고 서버에서 rebase 됩니다. 머지된 아래 브랜치는 자동으로 지워지지 않으므로, 머지 명령이 pull request 가 머지된 것을 확인한 뒤 지웁니다. `gh stack` 에는 `--repo` 옵션이 없어서 스택 안의 pull request 는 그 저장소의 체크아웃 안에서만 머지됩니다. GitHub 웹의 머지 상자에 있는 "Merge stack" 버튼은 쓰지 않습니다. 이 버튼은 스택의 모든 층을 push 한 번으로 `develop` 에 올리고, `check-landed-commit` 은 그 push 를 실패로 남깁니다. 이 버튼으로 머지하면 머지 명령이 하는 브랜치 삭제도 거치지 않습니다.
 - 스택 안의 모든 pull request 에 `develop` 의 규칙 묶음이 적용됩니다.
-- 아래 층을 고치면 `gh stack rebase` 로 위 층을 따라 올리고 `gh stack push` 로 올립니다. 아래 층이 머지된 뒤에는 `gh stack sync` 로 서버의 rebase 를 받아 옵니다.
+- 아래 층을 고치면 위 층의 브랜치에서 아래 층의 브랜치를 `git merge` 로 받고, 강제 옵션 없이 `git push` 로 올립니다. 층의 이력을 선형으로 만드는 rebase 는 서버가 합니다. 아래 pull request 가 머지되면 GitHub 가 위 층을 rebase 하고, GitHub 웹의 머지 상자에서 "Rebase stack" 을 누르면 그때 rebase 합니다. 서버가 rebase 한 브랜치는 `git fetch` 뒤 로컬 브랜치를 원격 브랜치에 맞춥니다. 맞추기 전의 로컬 브랜치에서는 push 하지 않습니다. 로컬 브랜치에 push 하지 않은 커밋이 있으면 맞춘 뒤 그 커밋을 다시 적용합니다. push 한 브랜치는 강제 push 하지 않습니다. 그래서 `gh stack submit`, `gh stack push`, `gh stack sync`, `gh stack rebase` 는 쓰지 않습니다.
 
 ## 저장소에 적용하기
 
@@ -50,6 +50,8 @@ Pleand 의 저장소가 쓰는 브랜치 흐름입니다. 이 문서는 절차�
 | `.github/workflows/style-guide-push.yml` | `style-guide check-landed-commit` | `master` 나 `develop` 에 올라온 커밋이 흐름에 맞게 머지된 pull request 하나가 아닐 때 |
 
 - `check-pull-request` 는 세 가지 짝을 통과시킵니다. 작업 브랜치에서 `develop` 으로, `develop` 에서 `master` 로, 스택의 한 층인 작업 브랜치에서 작업 브랜치로 가는 pull request 입니다.
+- pull request 워크플로는 `check-pull-request` 와 `check` 를 `pull request pairing into <base>` 검사 하나에서 이 순서로 돌립니다. `check-pull-request` 가 실패하면 `check` 는 돌지 않습니다. 이 검사를 필수로 건 저장소에서는 `check` 의 실패도 머지를 막습니다.
+- pull request 워크플로는 pull request 를 열거나, 다시 열거나, head 에 push 할 때 돕니다. 제목이나 본문을 고친 것만으로는 돌지 않습니다. base 를 바꾼 뒤 새 base 의 검사가 돌지 않았으면 head 에 다음 커밋을 push 하거나 pull request 를 닫았다 다시 엽니다.
 - `check-landed-commit` 은 브랜치가 이미 움직인 뒤에 돕니다. push 를 막지는 못하고, 흐름을 벗어난 커밋의 검사를 실패로 남깁니다. `develop` 의 커밋은 부모가 하나여야 하고, `master` 의 커밋은 부모가 둘이고 head 가 `develop` 인 pull request 의 머지 커밋이어야 합니다. 강제 push 와 브랜치 생성도 실패합니다.
 - 태그는 `check-push` 를 통과합니다.
 - 작업 브랜치의 접두사와 오래 두는 브랜치는 저장소 루트의 `style-guide.config.json` 에서 바꿉니다. 오래 두는 브랜치에는 push 할 수 있습니다. 이 브랜치는 `develop` 이나 `master` 로 가는 pull request 의 head 가 될 수 없습니다.

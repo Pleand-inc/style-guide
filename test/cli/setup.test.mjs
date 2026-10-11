@@ -58,6 +58,19 @@ function completeRepositoryFiles() {
   ]);
 }
 
+/** The steps of a workflow that run a style-guide command, each as the text from its `- name:` line to the next step or job. */
+function commandSteps(workflowText) {
+  return workflowText
+    .split(/^(?= {6}- | {2}[a-z])/m)
+    .filter((step) => step.startsWith("      - name: style-guide "));
+}
+
+/** @returns {string[]} the ids of the jobs under `jobs:` */
+function jobIds(workflowText) {
+  const jobs = workflowText.slice(workflowText.indexOf("\njobs:\n"));
+  return [...jobs.matchAll(/^ {2}([a-z-]+):$/gm)].map((match) => match[1]);
+}
+
 function usesLines(workflowText) {
   return workflowText
     .split("\n")
@@ -101,16 +114,15 @@ describe("both generated workflows", () => {
       assert.deepEqual([...new Set(usesLines(workflow))], pinned);
     });
 
-    it(`${name}: runs on the current LTS of Node and skips the Biome peer dependency`, () => {
+    it(`${name}: runs on the current LTS of Node and skips the Biome peer dependency in every command step`, () => {
       const jobCount = workflow.match(/^ {4}runs-on: ubuntu-latest$/gm).length;
       assert.equal(
         workflow.match(/^ {10}node-version: lts\/\*$/gm).length,
         jobCount,
       );
-      assert.equal(
-        workflow.match(/^ {10}NPM_CONFIG_LEGACY_PEER_DEPS: "true"$/gm).length,
-        jobCount,
-      );
+      for (const step of commandSteps(workflow)) {
+        assert.match(step, /^ {10}NPM_CONFIG_LEGACY_PEER_DEPS: "true"$/m);
+      }
     });
 
     it(`${name}: never installs the repository's own dependencies and names no version`, () => {
@@ -126,30 +138,50 @@ describe("both generated workflows", () => {
 });
 
 describe("the generated pull request workflow", () => {
-  it("runs on the four pull request activity types", () => {
+  it("runs when a pull request is opened, reopened or pushed to, and not when it is edited", () => {
     assert.match(
       pullRequest,
-      /^on:\n {2}pull_request:\n {4}types: \[opened, reopened, synchronize, edited\]\n/m,
+      /^on:\n {2}pull_request:\n {4}types: \[opened, reopened, synchronize\]\n/m,
     );
+    assert.doesNotMatch(pullRequest, /edited/);
     assert.doesNotMatch(pullRequest, /^ {2}push:/m);
   });
 
-  it("has the pairing job and the setup job, each with read-only contents", () => {
+  it("has one job, the pairing job, with read-only contents", () => {
+    assert.deepEqual(jobIds(pullRequest), ["pull-request-pairing"]);
     assert.match(
       pullRequest,
       /^ {2}pull-request-pairing:\n {4}name: pull request pairing into \$\{\{ github\.base_ref \}\}$/m,
     );
-    assert.match(
-      pullRequest,
-      /^ {2}style-guide-setup:\n {4}name: style guide setup$/m,
-    );
-    assert.equal(pullRequest.match(/^ {6}contents: read$/gm).length, 2);
+    assert.doesNotMatch(pullRequest, /style guide setup|style-guide-setup/);
+    assert.equal(pullRequest.match(/^ {6}contents: read$/gm).length, 1);
     assert.doesNotMatch(pullRequest, /write|pull-requests:/);
   });
 
+  it("runs check-pull-request and then check, as the last two steps of that job", () => {
+    const steps = pullRequest
+      .split(/^(?= {6}- )/m)
+      .filter((step) => step.startsWith("      - "));
+    assert.equal(steps.length, 4);
+    assert.deepEqual(
+      steps.slice(2).map((step) => step.split("\n")[0]),
+      [
+        "      - name: style-guide check-pull-request",
+        "      - name: style-guide check",
+      ],
+    );
+    assert.match(steps[2], /-- style-guide check-pull-request$/m);
+    assert.match(steps[3], /-- style-guide check$/m);
+  });
+
+  it("gives the base and head only to the step that checks the pairing", () => {
+    const [pairing, setup] = commandSteps(pullRequest);
+    assert.match(pairing, /^ {10}BASE_REF: \$\{\{ github\.base_ref \}\}$/m);
+    assert.match(pairing, /^ {10}HEAD_REF: \$\{\{ github\.head_ref \}\}$/m);
+    assert.doesNotMatch(setup, /BASE_REF|HEAD_REF/);
+  });
+
   it("passes the base and head through the environment, not through the script", () => {
-    assert.match(pullRequest, /^ {10}BASE_REF: \$\{\{ github\.base_ref \}\}$/m);
-    assert.match(pullRequest, /^ {10}HEAD_REF: \$\{\{ github\.head_ref \}\}$/m);
     assert.match(pullRequest, /-- style-guide check-pull-request$/m);
     assert.match(pullRequest, /-- style-guide check$/m);
     const runLines = pullRequest
@@ -172,6 +204,8 @@ describe("the generated push workflow", () => {
   });
 
   it("has the landed commit job, which may read contents and pull requests", () => {
+    assert.deepEqual(jobIds(push), ["landed-commit"]);
+    assert.equal(commandSteps(push).length, 1);
     assert.match(push, /^ {2}landed-commit:\n {4}name: landed commit$/m);
     assert.match(
       push,
