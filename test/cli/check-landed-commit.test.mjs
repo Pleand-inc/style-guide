@@ -18,10 +18,17 @@ const AFTER = "2222222222222222222222222222222222222222";
 const DEVELOP_TIP = "3333333333333333333333333333333333333333";
 const FIRST_LAYER = "4444444444444444444444444444444444444444";
 const SECOND_LAYER = "5555555555555555555555555555555555555555";
+const REBASED_FIRST = "6666666666666666666666666666666666666666";
+const REBASED_SECOND = "7777777777777777777777777777777777777777";
+const PUSHED_DIRECTLY = "8888888888888888888888888888888888888888";
+const PULL_HEAD = "9999999999999999999999999999999999999999";
 const ZERO = "0000000000000000000000000000000000000000";
 const TOKEN = "test-token-not-a-credential";
 const COMMIT_PATH = `/repos/acme/web/commits/${AFTER}`;
 const PULLS_PATH = `${COMMIT_PATH}/pulls?per_page=100`;
+const PULL_PATH = "/repos/acme/web/pulls/7";
+const PULL_COMMITS_PATH = `${PULL_PATH}/commits?per_page=100`;
+const AUTHOR = { name: "A. Author", email: "author@example.com" };
 const SEVERAL_COMMITS =
   `style-guide check-landed-commit: develop moved from ${BEFORE} to ${AFTER} ` +
   "by more than one first-parent commit";
@@ -32,6 +39,21 @@ const WHAT_HAPPENS_NEXT =
 /** @param {string} sha */
 function pullsPathOf(sha) {
   return `/repos/acme/web/commits/${sha}/pulls?per_page=100`;
+}
+
+/** @param {string} sha */
+function commitPathOf(sha) {
+  return `/repos/acme/web/commits/${sha}`;
+}
+
+/** @param {number} number */
+function pullPathOf(number) {
+  return `/repos/acme/web/pulls/${number}`;
+}
+
+/** @param {number} number */
+function pullCommitsPathOf(number) {
+  return `${pullPathOf(number)}/commits?per_page=100`;
 }
 
 /** @param {Record<string, { status?: number, body: unknown }>} responseByPath */
@@ -79,7 +101,46 @@ function mergedPull(overrides) {
 }
 
 function commitWith(parents) {
-  return { sha: AFTER, parents: parents.map((sha) => ({ sha })) };
+  return commitOf(AFTER, parents);
+}
+
+function commitOf(sha, parents) {
+  return { sha, parents: parents.map((parent) => ({ sha: parent })) };
+}
+
+// A commit a rebase merge wrote: GitHub is its committer, and it keeps the message and author of the original.
+function rebasedCommit(sha, parents, message) {
+  const committer = { name: "GitHub", email: "noreply@github.com" };
+  return {
+    ...commitOf(sha, parents),
+    commit: { message, author: AUTHOR, committer },
+  };
+}
+
+// A commit of the pull request as `GET /repos/{owner}/{repo}/pulls/{number}/commits` lists it.
+function pullCommit(message, index) {
+  const sha = (index + 1).toString(16).padStart(40, "a");
+  return { sha, commit: { message, author: AUTHOR, committer: AUTHOR } };
+}
+
+// The response for one pull request, which alone says how many commits the pull request has.
+function pullWithCommits(commits, overrides) {
+  const pull = mergedPull(overrides);
+  return {
+    ...pull,
+    head: { sha: PULL_HEAD, ...pull.head },
+    merged: true,
+    commits,
+  };
+}
+
+/** @param {string[]} lines the lines between the reason and what happens next */
+function severalCommitsFailure(lines) {
+  return [SEVERAL_COMMITS, ...lines, WHAT_HAPPENS_NEXT, ""].join("\n");
+}
+
+function requestLines(requests) {
+  return requests.map(({ method, path }) => `${method} ${path}`);
 }
 
 /**
@@ -146,7 +207,8 @@ const PUSHES_OUTSIDE_THE_FLOW = [
     event: pushEvent({}),
     commit: commitWith([BEFORE, DEVELOP_TIP]),
     pulls: [mergedPull({})],
-    reason: /develop takes squash commits/,
+    reason:
+      /#7 landed on develop as a commit with 2 parent\(s\): develop takes squash commits or rebased commits\n$/,
   },
   {
     name: "a force push",
@@ -179,6 +241,10 @@ const STACK_RESPONSES = {
   [COMMIT_PATH]: { body: commitWith([SECOND_LAYER]) },
   [PULLS_PATH]: {
     body: [mergedPull({ number: 13, head: { ref: "feat/remember" } })],
+  },
+  // The tip is the merge commit of #13, so the check asks whether the push is #13 rebased; #13 had one commit.
+  [pullPathOf(13)]: {
+    body: pullWithCommits(1, { number: 13, head: { ref: "feat/remember" } }),
   },
   [pullsPathOf(FIRST_LAYER)]: {
     body: [mergedPull({ number: 11, merge_commit_sha: FIRST_LAYER })],
@@ -320,6 +386,7 @@ describe("style-guide check-landed-commit: a push that moved the branch by sever
       [
         `GET ${COMMIT_PATH}`,
         `GET ${PULLS_PATH}`,
+        `GET ${pullPathOf(13)}`,
         `GET ${pullsPathOf(FIRST_LAYER)}`,
         `GET ${pullsPathOf(SECOND_LAYER)}`,
       ],
@@ -351,6 +418,480 @@ describe("style-guide check-landed-commit: a push that moved the branch by sever
         WHAT_HAPPENS_NEXT,
         "",
       ].join("\n"),
+    );
+  });
+});
+
+// Pull request #7 had three commits. A rebase merge put them onto develop as REBASED_FIRST, REBASED_SECOND and AFTER,
+// one parent each and with the message and author of each, and GitHub records AFTER, the commit develop moved to, as
+// the pull request's merge_commit_sha. PULL_HEAD was the last commit of the pull request's branch.
+const REBASED_MESSAGES = [
+  "feat: add the login form",
+  "feat: validate the login form",
+  "feat: remember the last login",
+];
+const REBASE_PUSH = pushEvent({
+  commits: [
+    { id: REBASED_FIRST, message: REBASED_MESSAGES[0] },
+    { id: REBASED_SECOND, message: REBASED_MESSAGES[1] },
+    { id: AFTER, message: REBASED_MESSAGES[2] },
+  ],
+});
+const REBASE_RESPONSES = {
+  [COMMIT_PATH]: {
+    body: rebasedCommit(AFTER, [REBASED_SECOND], REBASED_MESSAGES[2]),
+  },
+  [PULLS_PATH]: { body: [mergedPull({})] },
+  [PULL_PATH]: { body: pullWithCommits(3) },
+  [PULL_COMMITS_PATH]: { body: REBASED_MESSAGES.map(pullCommit) },
+  [commitPathOf(REBASED_SECOND)]: {
+    body: rebasedCommit(REBASED_SECOND, [REBASED_FIRST], REBASED_MESSAGES[1]),
+  },
+  [commitPathOf(REBASED_FIRST)]: {
+    body: rebasedCommit(REBASED_FIRST, [BEFORE], REBASED_MESSAGES[0]),
+  },
+  // Asked only to list the commits of a push that fails.
+  [pullsPathOf(REBASED_SECOND)]: { body: [mergedPull({})] },
+  [pullsPathOf(REBASED_FIRST)]: { body: [mergedPull({})] },
+};
+const REBASE_WALK_REQUESTS = [
+  `GET ${COMMIT_PATH}`,
+  `GET ${PULLS_PATH}`,
+  `GET ${PULL_PATH}`,
+  `GET ${PULL_COMMITS_PATH}`,
+  `GET ${commitPathOf(REBASED_SECOND)}`,
+  `GET ${commitPathOf(REBASED_FIRST)}`,
+];
+const REBASE_PUSH_LINES = [
+  "The push event lists 3 commit(s):",
+  "  6666666 no merged pull request: feat: add the login form",
+  "  7777777 no merged pull request: feat: validate the login form",
+  "  2222222 pull request #7: feat: remember the last login",
+];
+const REBASE_PUSH_LISTING_REQUESTS = [
+  `GET ${pullsPathOf(REBASED_FIRST)}`,
+  `GET ${pullsPathOf(REBASED_SECOND)}`,
+];
+
+describe("style-guide check-landed-commit: a rebase merge on develop", () => {
+  it("passes the commits of one merged pull request rebased onto develop, reading the pull request, its commits and the walk", async () => {
+    const result = await runCheck(REBASE_PUSH, REBASE_RESPONSES);
+    assert.equal(result.stderr, "");
+    assert.equal(result.status, 0);
+    assert.equal(
+      result.stdout,
+      `style-guide check-landed-commit: ${AFTER} landed on develop through a pull request\n`,
+    );
+    assert.deepEqual(requestLines(result.requests), REBASE_WALK_REQUESTS);
+  });
+
+  it("passes when the pull request response names no stack", async () => {
+    const result = await runCheck(REBASE_PUSH, {
+      ...REBASE_RESPONSES,
+      [PULL_PATH]: { body: pullWithCommits(3, { stack: null }) },
+    });
+    assert.equal(result.stderr, "");
+    assert.equal(result.status, 0);
+    assert.deepEqual(requestLines(result.requests), REBASE_WALK_REQUESTS);
+  });
+
+  it("still passes a squash merge without asking for the pull request", async () => {
+    const result = await runCheck(pushEvent({}), {
+      [COMMIT_PATH]: { body: commitWith([BEFORE]) },
+      [PULLS_PATH]: { body: [mergedPull({})] },
+      [PULL_PATH]: { body: pullWithCommits(3) },
+    });
+    assert.equal(result.status, 0);
+    assert.deepEqual(requestLines(result.requests), [
+      `GET ${COMMIT_PATH}`,
+      `GET ${PULLS_PATH}`,
+    ]);
+  });
+});
+
+describe("style-guide check-landed-commit: a push of several commits that is not one pull request rebased", () => {
+  it("fails when the walk does not reach before: the pull request's commits sit on a commit pushed with them", async () => {
+    const event = pushEvent({
+      commits: [
+        { id: PUSHED_DIRECTLY, message: "fix: a typo" },
+        ...REBASE_PUSH.commits,
+      ],
+    });
+    const result = await runCheck(event, {
+      ...REBASE_RESPONSES,
+      [commitPathOf(REBASED_FIRST)]: {
+        body: rebasedCommit(
+          REBASED_FIRST,
+          [PUSHED_DIRECTLY],
+          REBASED_MESSAGES[0],
+        ),
+      },
+      [pullsPathOf(PUSHED_DIRECTLY)]: { body: [] },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.equal(
+      result.stderr,
+      severalCommitsFailure([
+        "The push event lists 4 commit(s):",
+        "  8888888 no merged pull request: fix: a typo",
+        ...REBASE_PUSH_LINES.slice(1),
+      ]),
+    );
+    // The walk stops at the pull request's commit count; the lines above come from the pull requests of each commit.
+    assert.deepEqual(requestLines(result.requests), [
+      ...REBASE_WALK_REQUESTS,
+      `GET ${pullsPathOf(PUSHED_DIRECTLY)}`,
+      ...REBASE_PUSH_LISTING_REQUESTS,
+    ]);
+  });
+
+  it("fails when the walk meets a commit with two parents, and walks no further", async () => {
+    const result = await runCheck(REBASE_PUSH, {
+      ...REBASE_RESPONSES,
+      [commitPathOf(REBASED_SECOND)]: {
+        body: rebasedCommit(
+          REBASED_SECOND,
+          [REBASED_FIRST, DEVELOP_TIP],
+          REBASED_MESSAGES[1],
+        ),
+      },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(result.stderr, severalCommitsFailure(REBASE_PUSH_LINES));
+    assert.deepEqual(requestLines(result.requests), [
+      ...REBASE_WALK_REQUESTS.slice(0, 5),
+      ...REBASE_PUSH_LISTING_REQUESTS,
+    ]);
+  });
+
+  for (const commits of [2, 4]) {
+    it(`fails when the pull request has ${commits} commits and the walk reaches before in 3`, async () => {
+      const result = await runCheck(REBASE_PUSH, {
+        ...REBASE_RESPONSES,
+        [PULL_PATH]: { body: pullWithCommits(commits) },
+      });
+      assert.equal(result.status, 1);
+      assert.equal(result.stderr, severalCommitsFailure(REBASE_PUSH_LINES));
+    });
+  }
+
+  it("fails a pull request with no commits as before, without listing its commits", async () => {
+    const result = await runCheck(REBASE_PUSH, {
+      ...REBASE_RESPONSES,
+      [PULL_PATH]: { body: pullWithCommits(0) },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(result.stderr, severalCommitsFailure(REBASE_PUSH_LINES));
+    assert.deepEqual(requestLines(result.requests), [
+      ...REBASE_WALK_REQUESTS.slice(0, 3),
+      ...REBASE_PUSH_LISTING_REQUESTS,
+    ]);
+  });
+
+  it("fails the pull request's own commits pushed onto develop: the tip of a rebase merge is never the pull request's head", async () => {
+    const result = await runCheck(REBASE_PUSH, {
+      ...REBASE_RESPONSES,
+      [PULL_PATH]: {
+        body: pullWithCommits(3, { head: { ref: "feat/login", sha: AFTER } }),
+      },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(result.stderr, severalCommitsFailure(REBASE_PUSH_LINES));
+    assert.deepEqual(requestLines(result.requests), [
+      ...REBASE_WALK_REQUESTS.slice(0, 3),
+      ...REBASE_PUSH_LISTING_REQUESTS,
+    ]);
+  });
+
+  it("fails a pull request in a GitHub stack as before, without listing its commits, even when the push meets every other condition", async () => {
+    // What "Merge stack" with the rebase method might leave: the top pull request's merge_commit_sha at the tip, the
+    // layers' commits below it, and a pull request response that still names the stack.
+    const stack = {
+      id: 3,
+      number: 1,
+      size: 2,
+      position: 2,
+      base: { ref: "develop", sha: BEFORE },
+    };
+    const result = await runCheck(REBASE_PUSH, {
+      ...REBASE_RESPONSES,
+      [PULL_PATH]: { body: pullWithCommits(3, { stack }) },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr, severalCommitsFailure(REBASE_PUSH_LINES));
+    assert.deepEqual(requestLines(result.requests), [
+      ...REBASE_WALK_REQUESTS.slice(0, 3),
+      ...REBASE_PUSH_LISTING_REQUESTS,
+    ]);
+  });
+
+  it("fails a pull request of more than 100 commits without walking it, and says why", async () => {
+    const result = await runCheck(REBASE_PUSH, {
+      ...REBASE_RESPONSES,
+      [PULL_PATH]: { body: pullWithCommits(101) },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(
+      result.stderr,
+      severalCommitsFailure([
+        ...REBASE_PUSH_LINES,
+        "Whether the push is the rebase merge of #7 was not checked: #7 has 101 commits, " +
+          "and a pull request with more than 100 commits is squashed, not rebased",
+      ]),
+    );
+    assert.deepEqual(requestLines(result.requests), [
+      ...REBASE_WALK_REQUESTS.slice(0, 3),
+      ...REBASE_PUSH_LISTING_REQUESTS,
+    ]);
+  });
+
+  it("fails a stack landed at once when the top pull request has as many commits as the push", async () => {
+    const result = await runCheck(STACK_LANDED_AT_ONCE, {
+      ...STACK_RESPONSES,
+      [COMMIT_PATH]: {
+        body: rebasedCommit(
+          AFTER,
+          [SECOND_LAYER],
+          "feat: remember the last login (#13)",
+        ),
+      },
+      [pullPathOf(13)]: {
+        body: pullWithCommits(3, {
+          number: 13,
+          head: { ref: "feat/remember" },
+        }),
+      },
+      [pullCommitsPathOf(13)]: {
+        body: [
+          "feat: store the last login",
+          "feat: read the last login",
+          "feat: remember the last login",
+        ].map(pullCommit),
+      },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(
+      result.stderr,
+      severalCommitsFailure([
+        "The push event lists 3 commit(s):",
+        "  4444444 pull request #11: feat: add the login form (#11)",
+        "  5555555 pull request #12: feat: validate the login form (#12)",
+        "  2222222 pull request #13: feat: remember the last login (#13)",
+      ]),
+    );
+    // The tip carries the squash title of #13, not the message of its last commit, so the walk reads nothing below it.
+    assert.deepEqual(requestLines(result.requests), [
+      `GET ${COMMIT_PATH}`,
+      `GET ${PULLS_PATH}`,
+      `GET ${pullPathOf(13)}`,
+      `GET ${pullCommitsPathOf(13)}`,
+      `GET ${pullsPathOf(FIRST_LAYER)}`,
+      `GET ${pullsPathOf(SECOND_LAYER)}`,
+    ]);
+  });
+
+  it("fails a stack landed at once even when the top layer's squash commit has its pull request's last message", async () => {
+    const event = pushEvent({
+      commits: [
+        ...STACK_LANDED_AT_ONCE.commits.slice(0, 2),
+        { id: AFTER, message: "feat: remember the last login" },
+      ],
+    });
+    const result = await runCheck(event, {
+      ...STACK_RESPONSES,
+      [COMMIT_PATH]: {
+        body: rebasedCommit(
+          AFTER,
+          [SECOND_LAYER],
+          "feat: remember the last login",
+        ),
+      },
+      [pullPathOf(13)]: {
+        body: pullWithCommits(3, {
+          number: 13,
+          head: { ref: "feat/remember" },
+        }),
+      },
+      [pullCommitsPathOf(13)]: {
+        body: [
+          "feat: store the last login",
+          "feat: read the last login",
+          "feat: remember the last login",
+        ].map(pullCommit),
+      },
+      [commitPathOf(SECOND_LAYER)]: {
+        body: rebasedCommit(
+          SECOND_LAYER,
+          [FIRST_LAYER],
+          "feat: validate the login form (#12)",
+        ),
+      },
+      [commitPathOf(FIRST_LAYER)]: {
+        body: rebasedCommit(
+          FIRST_LAYER,
+          [BEFORE],
+          "feat: add the login form (#11)\n\nThe form posts to /login.",
+        ),
+      },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(
+      result.stderr,
+      severalCommitsFailure([
+        "The push event lists 3 commit(s):",
+        "  4444444 pull request #11: feat: add the login form (#11)",
+        "  5555555 pull request #12: feat: validate the login form (#12)",
+        "  2222222 pull request #13: feat: remember the last login",
+      ]),
+    );
+    // The walk stops at the squash commit of #12 and never reads the commit below it.
+    assert.deepEqual(requestLines(result.requests), [
+      `GET ${COMMIT_PATH}`,
+      `GET ${PULLS_PATH}`,
+      `GET ${pullPathOf(13)}`,
+      `GET ${pullCommitsPathOf(13)}`,
+      `GET ${commitPathOf(SECOND_LAYER)}`,
+      `GET ${pullsPathOf(FIRST_LAYER)}`,
+      `GET ${pullsPathOf(SECOND_LAYER)}`,
+    ]);
+  });
+
+  it("fails a push of several commits whose tip no pull request merged, as before and without asking for a pull request", async () => {
+    const event = pushEvent({
+      commits: [
+        { id: FIRST_LAYER, message: "wip" },
+        { id: AFTER, message: "fix a typo" },
+      ],
+    });
+    const result = await runCheck(event, {
+      [COMMIT_PATH]: { body: commitWith([FIRST_LAYER]) },
+      [PULLS_PATH]: { body: [] },
+      [pullsPathOf(FIRST_LAYER)]: { body: [] },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(
+      result.stderr,
+      severalCommitsFailure([
+        "The push event lists 2 commit(s):",
+        "  4444444 no merged pull request: wip",
+        "  2222222 no merged pull request: fix a typo",
+      ]),
+    );
+    assert.deepEqual(requestLines(result.requests), [
+      `GET ${COMMIT_PATH}`,
+      `GET ${PULLS_PATH}`,
+      `GET ${pullsPathOf(FIRST_LAYER)}`,
+    ]);
+  });
+
+  it("keeps master to one first-parent commit per push, even for a push that meets every condition of a rebase merge into develop", async () => {
+    const event = { ...REBASE_PUSH, ref: "refs/heads/master" };
+    const result = await runCheck(event, REBASE_RESPONSES);
+    assert.equal(result.status, 1);
+    assert.equal(
+      result.stderr,
+      [
+        `style-guide check-landed-commit: master moved from ${BEFORE} to ${AFTER} by more than one first-parent commit`,
+        ...REBASE_PUSH_LINES,
+        WHAT_HAPPENS_NEXT,
+        "",
+      ].join("\n"),
+    );
+    assert.deepEqual(requestLines(result.requests), [
+      `GET ${COMMIT_PATH}`,
+      `GET ${PULLS_PATH}`,
+      ...REBASE_PUSH_LISTING_REQUESTS,
+    ]);
+  });
+});
+
+describe("style-guide check-landed-commit: a push that may be a rebase merge when GitHub's answers fall short", () => {
+  const uncheckedLine = (reason) =>
+    new RegExp(
+      `^Whether the push is the rebase merge of #7 could not be checked: ${reason}$`,
+    );
+
+  /**
+   * @param {{ stderr: string }} result
+   * @param {RegExp} line the line between the commits and what happens next
+   */
+  function assertFailsAsBeforeWith(result, line) {
+    const lines = result.stderr.split("\n");
+    assert.deepEqual(lines.slice(0, 5), [
+      SEVERAL_COMMITS,
+      ...REBASE_PUSH_LINES,
+    ]);
+    assert.match(lines[5], line);
+    assert.deepEqual(lines.slice(6), [WHAT_HAPPENS_NEXT, ""]);
+    assert.doesNotMatch(result.stderr, new RegExp(TOKEN));
+  }
+
+  for (const status of [502, 403]) {
+    it(`keeps the failure and the commits when GitHub answers HTTP ${status} for the pull request, and says why`, async () => {
+      const result = await runCheck(REBASE_PUSH, {
+        ...REBASE_RESPONSES,
+        [PULL_PATH]: {
+          status,
+          body: { message: "API rate limit exceeded for installation." },
+        },
+      });
+      assert.equal(result.status, 1);
+      assert.equal(result.stdout, "");
+      assertFailsAsBeforeWith(
+        result,
+        uncheckedLine(
+          `GET http://127\\.0\\.0\\.1:\\d+${PULL_PATH}: HTTP ${status}`,
+        ),
+      );
+      assert.deepEqual(requestLines(result.requests), [
+        ...REBASE_WALK_REQUESTS.slice(0, 3),
+        ...REBASE_PUSH_LISTING_REQUESTS,
+      ]);
+    });
+  }
+
+  for (const path of [PULL_COMMITS_PATH, commitPathOf(REBASED_FIRST)]) {
+    it(`keeps the failure and the commits when GitHub answers HTTP 502 for ${path}`, async () => {
+      const result = await runCheck(REBASE_PUSH, {
+        ...REBASE_RESPONSES,
+        [path]: { status: 502, body: { message: "Server Error" } },
+      });
+      assert.equal(result.status, 1);
+      const escapedPath = path.replaceAll("?", "\\?");
+      assertFailsAsBeforeWith(
+        result,
+        uncheckedLine(
+          `GET http://127\\.0\\.0\\.1:\\d+${escapedPath}: HTTP 502`,
+        ),
+      );
+    });
+  }
+
+  it("keeps the failure and the commits when the pull request response does not say how many commits it has", async () => {
+    const result = await runCheck(REBASE_PUSH, {
+      ...REBASE_RESPONSES,
+      [PULL_PATH]: { body: mergedPull({}) },
+    });
+    assert.equal(result.status, 1);
+    assertFailsAsBeforeWith(
+      result,
+      uncheckedLine(
+        "the pull request response has no non-negative integer 'commits'",
+      ),
+    );
+  });
+
+  it("keeps the failure and the commits when the tip's response has no message or author", async () => {
+    const result = await runCheck(REBASE_PUSH, {
+      ...REBASE_RESPONSES,
+      [COMMIT_PATH]: { body: commitWith([REBASED_SECOND]) },
+    });
+    assert.equal(result.status, 1);
+    assertFailsAsBeforeWith(
+      result,
+      uncheckedLine("the commit response's 'commit' is not an object"),
     );
   });
 });
@@ -419,6 +960,7 @@ describe("style-guide check-landed-commit: the commits of a push that it does no
     const result = await runCheck(pushEvent({}), {
       [COMMIT_PATH]: { body: commitWith([DEVELOP_TIP]) },
       [PULLS_PATH]: { body: [mergedPull({})] },
+      [PULL_PATH]: { body: pullWithCommits(1) },
     });
     assert.equal(result.status, 1);
     assert.equal(

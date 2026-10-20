@@ -4,6 +4,10 @@ import { describe, it } from "node:test";
 import {
   isStackedPullRequest,
   readCommit,
+  readCommitIdentity,
+  readPullRequestCommitCount,
+  readPullRequestCommits,
+  readPullRequestHeadSha,
   readPullRequestView,
   readPulls,
   readPushEvent,
@@ -248,6 +252,117 @@ describe("readPullRequestView", () => {
     assert.throws(
       () => readPullRequestView("OPEN"),
       /the gh pr view output is not an object/,
+    );
+  });
+});
+
+describe("readPullRequestCommitCount", () => {
+  it("reads how many commits the pull request has, zero included", () => {
+    assert.equal(
+      readPullRequestCommitCount({ number: 7, commits: 3, additions: 10 }),
+      3,
+    );
+    assert.equal(readPullRequestCommitCount({ number: 7, commits: 0 }), 0);
+  });
+
+  it("rejects a response without a non-negative integer commit count", () => {
+    for (const commits of ["3", undefined, 1.5, -1, Number.NaN]) {
+      assert.throws(
+        () => readPullRequestCommitCount({ number: 7, commits }),
+        /the pull request response has no non-negative integer 'commits'/,
+      );
+    }
+    assert.throws(
+      () => readPullRequestCommitCount([]),
+      /the pull request response is not an object/,
+    );
+  });
+});
+
+describe("readPullRequestHeadSha", () => {
+  it("reads the sha of the pull request's head", () => {
+    assert.equal(
+      readPullRequestHeadSha({
+        number: 7,
+        head: { ref: "feat/a", sha: AFTER },
+      }),
+      AFTER,
+    );
+  });
+
+  it("rejects a response without a head or its sha", () => {
+    assert.throws(
+      () => readPullRequestHeadSha({ number: 7 }),
+      /the pull request response's 'head' is not an object/,
+    );
+    assert.throws(
+      () => readPullRequestHeadSha({ number: 7, head: { ref: "feat/a" } }),
+      /the pull request response's 'head' has no string 'sha'/,
+    );
+  });
+});
+
+const gitCommit = (message) => ({
+  message,
+  author: { name: "A. Author", email: "author@example.com", date: "x" },
+  committer: { name: "GitHub", email: "noreply@github.com", date: "y" },
+});
+
+describe("readCommitIdentity", () => {
+  it("reads the message and the author's name and email of the commit", () => {
+    const response = {
+      sha: AFTER,
+      parents: [{ sha: BEFORE }],
+      commit: gitCommit("feat: add the login form\n\nThe form posts."),
+    };
+    assert.deepEqual(readCommitIdentity(response), {
+      message: "feat: add the login form\n\nThe form posts.",
+      authorName: "A. Author",
+      authorEmail: "author@example.com",
+    });
+  });
+
+  it("rejects a response without the commit's message or author", () => {
+    assert.throws(
+      () => readCommitIdentity({ sha: AFTER, parents: [] }),
+      /the commit response's 'commit' is not an object/,
+    );
+    assert.throws(
+      () => readCommitIdentity({ commit: { ...gitCommit("x"), author: null } }),
+      /the commit response's 'commit.author' is not an object/,
+    );
+    assert.throws(
+      () => readCommitIdentity({ commit: { ...gitCommit("x"), message: 7 } }),
+      /the commit response's 'commit' has no string 'message'/,
+    );
+    const author = { name: "A. Author" };
+    assert.throws(
+      () => readCommitIdentity({ commit: { ...gitCommit("x"), author } }),
+      /the commit response's 'commit.author' has no string 'email'/,
+    );
+  });
+});
+
+describe("readPullRequestCommits", () => {
+  it("reads the message and author of each commit, in the response's order", () => {
+    const response = [
+      { sha: BEFORE, commit: gitCommit("feat: add the login form") },
+      { sha: AFTER, commit: gitCommit("feat: validate the login form") },
+    ];
+    assert.deepEqual(
+      readPullRequestCommits(response).map(({ message }) => message),
+      ["feat: add the login form", "feat: validate the login form"],
+    );
+  });
+
+  it("rejects a response that is not a list of commits", () => {
+    assert.throws(
+      () => readPullRequestCommits({ message: "Not Found" }),
+      /the pull request commits response is not an array/,
+    );
+    assert.throws(
+      () => readPullRequestCommits([{ sha: AFTER }]),
+      /a commit of the pull request's 'commit' is not an object/,
     );
   });
 });
