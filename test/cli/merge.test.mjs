@@ -30,6 +30,11 @@ if (first === "pr" && second === "view") {
   console.log(JSON.stringify(mergeRan ? scenario.viewAfterMerge : scenario.view));
 }
 if (first === "api" && commandLine.length === 2) console.log(JSON.stringify(scenario.pull));
+if (first === "api" && commandLine[2] === "DELETE" && scenario.deleteAnswer) {
+  process.stdout.write(scenario.deleteAnswer.stdout);
+  process.stderr.write(scenario.deleteAnswer.stderr);
+  process.exit(scenario.deleteAnswer.status);
+}
 `;
 
 const SSH_ORIGIN = "git@github.com:acme/web.git";
@@ -74,6 +79,96 @@ const STACKED = {
   viewAfterMerge: { ...OPEN_WORK_BRANCH, state: "MERGED" },
   pull: { number: 12, stack: { id: 3 } },
 };
+/**
+ * What `gh api` does when GitHub answers with an HTTP error: the response body on stdout, `gh: <message> (HTTP
+ * <status>)` on stderr, exit 1 (processResponse and parseErrorResponse in the gh CLI's pkg/cmd/api/api.go).
+ * @param {number} status
+ * @param {string} message
+ */
+function ghApiHttpError(status, message) {
+  return {
+    stdout: JSON.stringify({ message, status: String(status) }),
+    stderr: `gh: ${message} (HTTP ${status})\n`,
+    status: 1,
+  };
+}
+const GONE_422 = "gh: Reference does not exist (HTTP 422)";
+const ALREADY_DELETED_ANSWERS = [
+  {
+    name: "HTTP 422 Reference does not exist",
+    answer: ghApiHttpError(422, "Reference does not exist"),
+    said: "feat/login was already deleted: GitHub answered HTTP 422\n",
+  },
+  {
+    name: "HTTP 404 Reference does not exist",
+    answer: ghApiHttpError(404, "Reference does not exist"),
+    said: "feat/login was already deleted: GitHub answered HTTP 404\n",
+  },
+  {
+    name: "that line after another line",
+    answer: { stdout: "", stderr: `warning: x\n${GONE_422}\n`, status: 1 },
+    said: "feat/login was already deleted: GitHub answered HTTP 422\n",
+  },
+  {
+    // gh may print a scope hint on the line after the error (processResponse in the gh CLI's pkg/cmd/api/api.go).
+    name: "that line before a scope hint",
+    answer: {
+      stdout: "",
+      stderr:
+        "gh: Reference does not exist (HTTP 404)\n" +
+        'gh: This API operation needs the "repo" scope. To request it, run:  gh auth refresh -h github.com -s repo\n',
+      status: 1,
+    },
+    said: "feat/login was already deleted: GitHub answered HTTP 404\n",
+  },
+];
+const FAILED_DELETE_ANSWERS = [
+  {
+    name: "HTTP 403",
+    answer: ghApiHttpError(403, "Resource not accessible by integration"),
+  },
+  {
+    // GitHub's REST docs give 422 for "Delete a reference" also when validation fails.
+    name: "HTTP 422 Validation Failed",
+    answer: ghApiHttpError(422, "Validation Failed"),
+  },
+  {
+    // GitHub's REST docs list 409 for "Delete a reference" too; only 422 and 404 with this message count as gone.
+    name: "HTTP 409 Reference does not exist",
+    answer: ghApiHttpError(409, "Reference does not exist"),
+  },
+  {
+    // gh prints the bare status when it finds no message in the body: nothing says the branch is gone.
+    name: "HTTP 404 with no message",
+    answer: { stdout: "", stderr: "gh: HTTP 404\n", status: 1 },
+  },
+  {
+    // A message over several lines leaves ` (HTTP 422)` alone on the last line.
+    name: "an HTTP 422 message over several lines",
+    answer: ghApiHttpError(
+      422,
+      "Repository rule violations found\n\nCannot delete this branch\n\n",
+    ),
+  },
+  {
+    name: "text before gh: on the Reference does not exist line",
+    answer: { stdout: "", stderr: `x ${GONE_422}\n`, status: 1 },
+  },
+  {
+    name: "text after the status on the Reference does not exist line",
+    answer: { stdout: "", stderr: `${GONE_422} x\n`, status: 1 },
+  },
+  {
+    // What gh prints when it cannot resolve the API host (printError in the gh CLI's internal/ghcmd/cmd.go).
+    name: "a network error",
+    answer: {
+      stdout: "",
+      stderr:
+        "error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com\n",
+      status: 1,
+    },
+  },
+];
 const REFUSED_PULL_REQUESTS = [
   {
     name: "a closed pull request",
@@ -240,7 +335,44 @@ describe("style-guide merge: a stacked pull request", () => {
       VIEW_CALL,
       DELETE_HEAD_CALL,
     ]);
+    assert.equal(
+      result.stdout,
+      "gh stack merge 12 --squash --yes\n" +
+        "gh api -X DELETE repos/acme/web/git/refs/heads/feat/login\n",
+    );
   });
+
+  for (const { name, answer, said } of ALREADY_DELETED_ANSWERS) {
+    it(`takes the head branch as deleted when the DELETE answers ${name}, and exits 0`, () => {
+      const scenario = { ...STACKED, deleteAnswer: answer };
+      const result = runMerge(createCheckout(HTTPS_ORIGIN), scenario);
+      assert.equal(result.stderr, "");
+      assert.equal(result.status, 0);
+      assert.deepEqual(result.calls.at(-1), DELETE_HEAD_CALL);
+      assert.equal(
+        result.stdout,
+        "gh stack merge 12 --squash --yes\n" +
+          "gh api -X DELETE repos/acme/web/git/refs/heads/feat/login\n" +
+          said,
+      );
+    });
+  }
+
+  for (const { name, answer } of FAILED_DELETE_ANSWERS) {
+    it(`exits 1 and passes on what gh printed when the DELETE fails with ${name}`, () => {
+      const scenario = { ...STACKED, deleteAnswer: answer };
+      const result = runMerge(createCheckout(HTTPS_ORIGIN), scenario);
+      assert.equal(result.status, 1);
+      assert.deepEqual(result.calls.at(-1), DELETE_HEAD_CALL);
+      assert.ok(result.stderr.startsWith(answer.stderr), result.stderr);
+      assert.match(
+        result.stderr,
+        /^style-guide merge: Command failed: gh api -X DELETE repos\/acme\/web\/git\/refs\/heads\/feat\/login$/m,
+      );
+      assert.ok(result.stdout.endsWith(answer.stdout), result.stdout);
+      assert.doesNotMatch(result.stdout, /already deleted/);
+    });
+  }
 
   it("keeps the head branch when the pull request does not read as merged yet, and exits 1", () => {
     const scenario = { ...STACKED, viewAfterMerge: OPEN_WORK_BRANCH };

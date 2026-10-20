@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   AFTER_SEVERAL_COMMITS,
+  canBeRebaseMergeOf,
   carriedCommitLines,
   carriedSeveralCommits,
   classifyPushTarget,
@@ -12,9 +13,13 @@ import {
   isWorkBranch,
   landedCommitProblem,
   mergeCommands,
+  nextCommitToWalk,
   planMerge,
   pullRequestPairProblem,
   pushProblems,
+  REBASE_MERGE_COMMIT_LIMIT,
+  rebaseMergeCandidate,
+  unwalkedRebaseMergeLine,
 } from "../../cli/lib/branch-flow.mjs";
 import { DEFAULT_BRANCH_FLOW } from "../../cli/lib/config.mjs";
 
@@ -648,9 +653,9 @@ describe("landedCommitProblem: how the branch moved", () => {
 
   it("rejects a merge commit on develop and a squash on master", () => {
     const mergeCommit = { sha: MERGE, parents: [BEFORE, DEVELOP_TIP] };
-    assert.match(
+    assert.equal(
       landedProblem(squashOnDevelop({ commit: mergeCommit })),
-      /#7 landed on develop as a commit with 2 parent\(s\): develop takes squash commits/,
+      "#7 landed on develop as a commit with 2 parent(s): develop takes squash commits or rebased commits",
     );
     const squash = { sha: MERGE, parents: [BEFORE] };
     assert.match(
@@ -693,6 +698,379 @@ describe("carriedSeveralCommits", () => {
         `${landed.branch} moved from ${BEFORE} to ${MERGE} by more than one first-parent commit`,
       );
     }
+  });
+});
+
+// Pull request #7 had three commits. A rebase merge put them onto develop as REBASED_FIRST, REBASED_SECOND and MERGE,
+// one parent each and with the message and author of each, and GitHub records MERGE, the commit develop moved to, as
+// the pull request's merge_commit_sha. PULL_HEAD was the last commit of the pull request's branch.
+const REBASED_FIRST = "6666666666666666666666666666666666666666";
+const REBASED_SECOND = "7777777777777777777777777777777777777777";
+const PUSHED_DIRECTLY = "8888888888888888888888888888888888888888";
+const PULL_HEAD = "9999999999999999999999999999999999999999";
+
+const AUTHOR = { authorName: "A. Author", authorEmail: "author@example.com" };
+const PULL_COMMITS = [
+  { message: "feat: add the login form", ...AUTHOR },
+  { message: "feat: validate the login form", ...AUTHOR },
+  { message: "feat: remember the last login\n\nKeeps the address.", ...AUTHOR },
+];
+const [ADD_FORM, VALIDATE_FORM, REMEMBER_LOGIN] = PULL_COMMITS;
+
+const walked = (sha, parents, identity) => ({ sha, parents, ...identity });
+
+const REBASE_WALK = {
+  pull: { number: 7, commits: 3, headSha: PULL_HEAD, stacked: false },
+  pullCommits: PULL_COMMITS,
+  firstParents: [
+    walked(MERGE, [REBASED_SECOND], REMEMBER_LOGIN),
+    walked(REBASED_SECOND, [REBASED_FIRST], VALIDATE_FORM),
+    walked(REBASED_FIRST, [BEFORE], ADD_FORM),
+  ],
+};
+
+const rebaseOnDevelop = (rebaseWalk) =>
+  squashOnDevelop({
+    commit: { sha: MERGE, parents: [REBASED_SECOND] },
+    rebaseWalk: { ...REBASE_WALK, ...rebaseWalk },
+  });
+
+/**
+ * A pull request of `commits` commits, told apart by their messages, rebased onto develop.
+ * @param {number} commits
+ */
+function rebaseOfCommits(commits) {
+  const pullCommits = Array.from({ length: commits }, (_, index) => ({
+    message: `chore: step ${index + 1}`,
+    ...AUTHOR,
+  }));
+  const shas = pullCommits.map((_, index) =>
+    index === commits - 1 ? MERGE : (index + 1).toString(16).padStart(40, "a"),
+  );
+  const firstParents = shas
+    .map((sha, index) =>
+      walked(sha, [shas[index - 1] ?? BEFORE], pullCommits[index]),
+    )
+    .reverse();
+  return squashOnDevelop({
+    commit: { sha: MERGE, parents: [shas.at(-2) ?? BEFORE] },
+    rebaseWalk: {
+      pull: { number: 7, commits, headSha: PULL_HEAD, stacked: false },
+      pullCommits,
+      firstParents,
+    },
+  });
+}
+
+describe("landedCommitProblem: a push that moved develop by several commits as a rebase merge", () => {
+  const severalCommits = `develop moved from ${BEFORE} to ${MERGE} by more than one first-parent commit`;
+
+  it("accepts the commits of one merged pull request, rebased onto develop", () => {
+    assert.equal(landedProblem(rebaseOnDevelop({})), null);
+  });
+
+  it("rejects a walk that does not reach before: the pull request's commits sit on a commit pushed with them", () => {
+    const firstParents = [
+      walked(MERGE, [REBASED_SECOND], REMEMBER_LOGIN),
+      walked(REBASED_SECOND, [REBASED_FIRST], VALIDATE_FORM),
+      walked(REBASED_FIRST, [PUSHED_DIRECTLY], ADD_FORM),
+    ];
+    assert.equal(
+      landedProblem(rebaseOnDevelop({ firstParents })),
+      severalCommits,
+    );
+  });
+
+  it("rejects a walk that meets a commit with two parents, even when its first parents reach before", () => {
+    const firstParents = [
+      walked(MERGE, [REBASED_SECOND], REMEMBER_LOGIN),
+      walked(REBASED_SECOND, [REBASED_FIRST, DEVELOP_TIP], VALIDATE_FORM),
+      walked(REBASED_FIRST, [BEFORE], ADD_FORM),
+    ];
+    assert.equal(
+      landedProblem(rebaseOnDevelop({ firstParents })),
+      severalCommits,
+    );
+  });
+
+  it("rejects a walk whose commit count is not the pull request's", () => {
+    const fewer = {
+      pull: { ...REBASE_WALK.pull, commits: 2 },
+      pullCommits: PULL_COMMITS.slice(1),
+      firstParents: REBASE_WALK.firstParents.slice(0, 2),
+    };
+    const more = {
+      pull: { ...REBASE_WALK.pull, commits: 4 },
+      pullCommits: [{ message: "chore: start", ...AUTHOR }, ...PULL_COMMITS],
+    };
+    for (const rebaseWalk of [fewer, more]) {
+      assert.equal(landedProblem(rebaseOnDevelop(rebaseWalk)), severalCommits);
+    }
+  });
+
+  it("rejects a walk when GitHub lists another number of commits for the pull request than it counts", () => {
+    const pullCommits = [
+      { message: "chore: start", ...AUTHOR },
+      ...PULL_COMMITS,
+    ];
+    assert.equal(
+      landedProblem(rebaseOnDevelop({ pullCommits })),
+      severalCommits,
+    );
+  });
+
+  it("rejects the squash commits of a stack landed at once, even when the top one has the pull request's last message", () => {
+    const firstParents = [
+      walked(MERGE, [REBASED_SECOND], REMEMBER_LOGIN),
+      walked(REBASED_SECOND, [REBASED_FIRST], {
+        ...VALIDATE_FORM,
+        message: "feat: validate the login form (#12)",
+      }),
+      walked(REBASED_FIRST, [BEFORE], {
+        ...ADD_FORM,
+        message: "feat: add the login form (#11)",
+      }),
+    ];
+    assert.equal(
+      landedProblem(rebaseOnDevelop({ firstParents })),
+      severalCommits,
+    );
+  });
+
+  it("rejects a walk with a commit whose message or author is not that of the pull request's commit at the same place", () => {
+    const changes = [
+      { message: "feat: add the login form\n" },
+      { authorName: "B. Author" },
+      { authorEmail: "author@example.org" },
+    ];
+    for (const [depth, commit] of REBASE_WALK.firstParents.entries()) {
+      for (const change of changes) {
+        const firstParents = REBASE_WALK.firstParents.with(depth, {
+          ...commit,
+          ...change,
+        });
+        assert.equal(
+          landedProblem(rebaseOnDevelop({ firstParents })),
+          severalCommits,
+        );
+      }
+    }
+  });
+
+  it("rejects the pull request's commits rebased in another order", () => {
+    const pullCommits = [VALIDATE_FORM, ADD_FORM, REMEMBER_LOGIN];
+    assert.equal(
+      landedProblem(rebaseOnDevelop({ pullCommits })),
+      severalCommits,
+    );
+  });
+
+  it("rejects a walk that does not start at the tip", () => {
+    const firstParents = [
+      walked(DEVELOP_TIP, [REBASED_SECOND], REMEMBER_LOGIN),
+      ...REBASE_WALK.firstParents.slice(1),
+    ];
+    assert.equal(
+      landedProblem(rebaseOnDevelop({ firstParents })),
+      severalCommits,
+    );
+  });
+
+  it("rejects a tip that is the pull request's head: GitHub's rebase merge always writes new commits", () => {
+    const pull = { ...REBASE_WALK.pull, headSha: MERGE };
+    assert.equal(landedProblem(rebaseOnDevelop({ pull })), severalCommits);
+  });
+
+  it("rejects a pull request in a GitHub stack, even when the walk meets every other condition", () => {
+    const pull = { ...REBASE_WALK.pull, stacked: true };
+    assert.equal(landedProblem(rebaseOnDevelop({ pull })), severalCommits);
+    assert.equal(landedProblem(rebaseOnDevelop({})), null);
+  });
+
+  it(`walks a pull request of up to ${REBASE_MERGE_COMMIT_LIMIT} commits and rejects one with more`, () => {
+    for (const commits of [2, REBASE_MERGE_COMMIT_LIMIT]) {
+      assert.equal(landedProblem(rebaseOfCommits(commits)), null);
+    }
+    const landed = rebaseOfCommits(REBASE_MERGE_COMMIT_LIMIT + 1);
+    assert.equal(landed.rebaseWalk.firstParents.length, 101);
+    assert.equal(landed.rebaseWalk.firstParents.at(-1).parents[0], BEFORE);
+    assert.equal(landedProblem(landed), severalCommits);
+  });
+
+  it("rejects the walk when the tip is not the merge_commit_sha of a merged pull request the flow takes into develop", () => {
+    for (const pulls of [
+      [],
+      [mergedPull({ merged: false })],
+      [mergedPull({ head: "staging" })],
+      [mergedPull({ base: "feat/a", head: "feat/b" })],
+    ]) {
+      const landed = { ...rebaseOnDevelop({}), pulls };
+      assert.equal(landedProblem(landed), severalCommits);
+    }
+  });
+
+  it("keeps master to one first-parent commit per push, even for a push that meets every condition of a rebase merge into develop", () => {
+    const landed = { ...rebaseOnDevelop({}), branch: "master" };
+    assert.equal(
+      landedProblem(landed),
+      `master moved from ${BEFORE} to ${MERGE} by more than one first-parent commit`,
+    );
+  });
+});
+
+describe("rebaseMergeCandidate", () => {
+  const candidateOf = (landed) =>
+    rebaseMergeCandidate(landed, DEFAULT_BRANCH_FLOW);
+
+  it("names the merged pull request into develop whose merge_commit_sha is the tip of a push of several commits", () => {
+    const pulls = [mergedPull({ number: 6, merged: false }), mergedPull({})];
+    assert.deepEqual(
+      candidateOf({ ...rebaseOnDevelop({}), pulls }),
+      mergedPull({}),
+    );
+  });
+
+  it("names none for a push that moved develop by one commit, or that was forced or created the branch", () => {
+    assert.equal(candidateOf(squashOnDevelop({})), undefined);
+    for (const overrides of [{ forced: true }, { before: ZERO }]) {
+      assert.equal(
+        candidateOf({ ...rebaseOnDevelop({}), ...overrides }),
+        undefined,
+      );
+    }
+  });
+
+  it("names none on master, even for a merged pull request into develop", () => {
+    assert.equal(
+      candidateOf({ ...rebaseOnDevelop({}), branch: "master" }),
+      undefined,
+    );
+  });
+
+  it("names none when the pull request is not one the flow takes into develop", () => {
+    for (const pull of [
+      mergedPull({ mergeCommitSha: DEVELOP_TIP }),
+      mergedPull({ base: "feat/a", head: "feat/b" }),
+      mergedPull({ head: "ops/a" }),
+    ]) {
+      const landed = { ...rebaseOnDevelop({}), pulls: [pull] };
+      assert.equal(candidateOf(landed), undefined);
+    }
+  });
+
+  it("follows the configured prefixes for the head of the pull request", () => {
+    const pull = mergedPull({ head: "ops/a" });
+    const landed = { ...rebaseOnDevelop({}), pulls: [pull] };
+    assert.deepEqual(rebaseMergeCandidate(landed, CUSTOM_BRANCH_FLOW), pull);
+  });
+});
+
+describe("canBeRebaseMergeOf", () => {
+  const pullOf = (commits, headSha = PULL_HEAD, stacked = false) => ({
+    number: 7,
+    commits,
+    headSha,
+    stacked,
+  });
+
+  it(`is true for a pull request of 2 to ${REBASE_MERGE_COMMIT_LIMIT} commits whose head is not the tip`, () => {
+    for (const commits of [2, 3, REBASE_MERGE_COMMIT_LIMIT]) {
+      assert.equal(canBeRebaseMergeOf(pullOf(commits), MERGE), true);
+    }
+  });
+
+  it(`is false for a pull request of fewer than 2 or more than ${REBASE_MERGE_COMMIT_LIMIT} commits`, () => {
+    for (const commits of [0, 1, REBASE_MERGE_COMMIT_LIMIT + 1]) {
+      assert.equal(canBeRebaseMergeOf(pullOf(commits), MERGE), false);
+    }
+  });
+
+  it("is false when the tip is the pull request's head", () => {
+    assert.equal(canBeRebaseMergeOf(pullOf(3, MERGE), MERGE), false);
+  });
+
+  it("is false for a pull request in a GitHub stack, whatever its commits", () => {
+    for (const commits of [2, 3, REBASE_MERGE_COMMIT_LIMIT]) {
+      assert.equal(
+        canBeRebaseMergeOf(pullOf(commits, PULL_HEAD, true), MERGE),
+        false,
+      );
+    }
+  });
+});
+
+describe("unwalkedRebaseMergeLine", () => {
+  it(`names nothing for a pull request of at most ${REBASE_MERGE_COMMIT_LIMIT} commits`, () => {
+    for (const commits of [0, 3, REBASE_MERGE_COMMIT_LIMIT]) {
+      assert.equal(
+        unwalkedRebaseMergeLine({ number: 7, commits, headSha: PULL_HEAD }),
+        null,
+      );
+    }
+  });
+
+  it("says why the check did not walk a pull request with more commits", () => {
+    assert.equal(
+      unwalkedRebaseMergeLine({ number: 7, commits: 101, headSha: PULL_HEAD }),
+      "Whether the push is the rebase merge of #7 was not checked: #7 has 101 commits, " +
+        "and a pull request with more than 100 commits is squashed, not rebased",
+    );
+  });
+});
+
+describe("nextCommitToWalk", () => {
+  const walkOf = (commits, depth) => ({
+    ...REBASE_WALK,
+    pull: { ...REBASE_WALK.pull, commits },
+    firstParents: REBASE_WALK.firstParents.slice(0, depth),
+  });
+
+  it("names the first parent of the last commit read while the walk has fewer commits than the pull request", () => {
+    assert.equal(nextCommitToWalk(walkOf(3, 1), BEFORE), REBASED_SECOND);
+    assert.equal(nextCommitToWalk(walkOf(3, 2), BEFORE), REBASED_FIRST);
+  });
+
+  it("stops once the walk has as many commits as the pull request", () => {
+    assert.equal(nextCommitToWalk(walkOf(3, 3), BEFORE), null);
+    assert.equal(nextCommitToWalk(walkOf(2, 2), BEFORE), null);
+  });
+
+  it("stops at before, even when the pull request has more commits", () => {
+    assert.equal(nextCommitToWalk(walkOf(4, 3), BEFORE), null);
+  });
+
+  it("stops at a commit that has not exactly one parent", () => {
+    for (const parents of [[], [REBASED_FIRST, DEVELOP_TIP]]) {
+      const rebaseWalk = {
+        ...walkOf(3, 2),
+        firstParents: [
+          walked(MERGE, [REBASED_SECOND], REMEMBER_LOGIN),
+          walked(REBASED_SECOND, parents, VALIDATE_FORM),
+        ],
+      };
+      assert.equal(nextCommitToWalk(rebaseWalk, BEFORE), null);
+    }
+  });
+
+  it("stops at a commit whose message or author is not that of the pull request's commit at the same place", () => {
+    const squashOfLayer = {
+      ...VALIDATE_FORM,
+      message: "feat: validate the login form (#12)",
+    };
+    for (const firstParents of [
+      [walked(MERGE, [REBASED_SECOND], squashOfLayer)],
+      [
+        walked(MERGE, [REBASED_SECOND], REMEMBER_LOGIN),
+        walked(REBASED_SECOND, [REBASED_FIRST], squashOfLayer),
+      ],
+    ]) {
+      const rebaseWalk = { ...walkOf(3, 0), firstParents };
+      assert.equal(nextCommitToWalk(rebaseWalk, BEFORE), null);
+    }
+  });
+
+  it("names nothing before the tip is read", () => {
+    assert.equal(nextCommitToWalk(walkOf(3, 0), BEFORE), null);
   });
 });
 

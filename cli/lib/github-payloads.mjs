@@ -2,6 +2,7 @@
 
 import { isRecord } from "./values.mjs";
 
+/** @typedef {import("./branch-flow.mjs").CommitIdentity} CommitIdentity */
 /** @typedef {import("./branch-flow.mjs").LandedPull} LandedPull */
 /** @typedef {import("./branch-flow.mjs").PushedCommit} PushedCommit */
 /**
@@ -189,8 +190,78 @@ export function readPullRequestView(payload) {
 }
 
 /**
+ * The pull requests `GET /repos/{owner}/{repo}/commits/{ref}/pulls` lists do not carry this count; the response for
+ * one pull request does.
  * @param {unknown} payload the response of `GET /repos/{owner}/{repo}/pulls/{number}`
- * @returns {boolean} whether the pull request is part of a GitHub stack; the REST pull request sets `stack` only then
+ * @returns {number} how many commits the pull request has
+ */
+export function readPullRequestCommitCount(payload) {
+  const description = "the pull request response";
+  const { commits } = requireRecord(payload, description);
+  if (typeof commits === "number" && Number.isInteger(commits) && commits >= 0)
+    return commits;
+  throw new Error(`${description} has no non-negative integer 'commits'`);
+}
+
+/**
+ * @param {unknown} payload the response of `GET /repos/{owner}/{repo}/pulls/{number}`
+ * @returns {string} the last commit of the pull request's head branch
+ */
+export function readPullRequestHeadSha(payload) {
+  const pull = requireRecord(payload, "the pull request response");
+  const description = "the pull request response's 'head'";
+  return requireString(
+    requireRecord(pull.head, description),
+    "sha",
+    description,
+  );
+}
+
+/**
+ * @param {unknown} entry a commit as `GET /repos/{owner}/{repo}/commits/{ref}` answers it or
+ *   `GET /repos/{owner}/{repo}/pulls/{number}/commits` lists it
+ * @param {string} description what the commit is, for the error message
+ * @returns {CommitIdentity}
+ */
+function readIdentity(entry, description) {
+  const gitCommitDescription = `${description}'s 'commit'`;
+  const authorDescription = `${description}'s 'commit.author'`;
+  const gitCommit = requireRecord(
+    requireRecord(entry, description).commit,
+    gitCommitDescription,
+  );
+  const author = requireRecord(gitCommit.author, authorDescription);
+  return {
+    message: requireString(gitCommit, "message", gitCommitDescription),
+    authorName: requireString(author, "name", authorDescription),
+    authorEmail: requireString(author, "email", authorDescription),
+  };
+}
+
+/**
+ * readCommit leaves these unread, so a push that cannot be a rebase merge never fails on them.
+ * @param {unknown} payload the response of `GET /repos/{owner}/{repo}/commits/{ref}`
+ * @returns {CommitIdentity}
+ */
+export function readCommitIdentity(payload) {
+  return readIdentity(payload, "the commit response");
+}
+
+/**
+ * @param {unknown} payload the response of `GET /repos/{owner}/{repo}/pulls/{number}/commits`
+ * @returns {CommitIdentity[]} in the response's order
+ */
+export function readPullRequestCommits(payload) {
+  return requireArray(payload, "the pull request commits response").map(
+    (entry) => readIdentity(entry, "a commit of the pull request"),
+  );
+}
+
+/**
+ * @param {unknown} payload the response of `GET /repos/{owner}/{repo}/pulls/{number}`
+ * @returns {boolean} whether the pull request is part of a GitHub stack, read as `stack` holding a value. The REST
+ * schema lists `stack` as an optional object and does not say when it is set; GitHub says "present only when the pull
+ * request belongs to a stack" only of the Actions event's `github.event.pull_request.stack`.
  */
 export function isStackedPullRequest(payload) {
   return Boolean(requireRecord(payload, "the pull request response").stack);

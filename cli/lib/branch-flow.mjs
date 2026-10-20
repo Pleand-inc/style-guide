@@ -1,7 +1,7 @@
 // Branch-flow rules as pure functions (no I/O).
 //
-// Flow: push `<prefix>/<slug>` -> pull request into `develop` (squash) -> pull request `develop` -> `master`
-// (merge commit).
+// Flow: push `<prefix>/<slug>` -> pull request into `develop` (squash, or a rebase from GitHub's merge button)
+// -> pull request `develop` -> `master` (merge commit).
 
 /** @typedef {import("./config.mjs").BranchFlow} BranchFlow */
 /** @typedef {{ base: string, head: string }} PullRequestPair */
@@ -35,12 +35,40 @@
  * @property {boolean} merged
  */
 /**
+ * @typedef {object} CommitIdentity what a rebase keeps of a commit
+ * @property {string} message
+ * @property {string} authorName
+ * @property {string} authorEmail
+ */
+/**
+ * @typedef {{ sha: string, parents: string[] } & CommitIdentity} WalkedCommit a commit on the first-parent walk down
+ *   from the tip of a push
+ */
+/**
+ * @typedef {object} RebasedPull what `GET /repos/{owner}/{repo}/pulls/{number}` says of the pull request
+ *   rebaseMergeCandidate names
+ * @property {number} number
+ * @property {number} commits how many commits the pull request has
+ * @property {string} headSha the pull request's `head.sha`
+ * @property {boolean} stacked whether the response names a GitHub stack (`stack`) for the pull request
+ */
+/**
+ * @typedef {object} RebaseWalk what tells whether a push that moved develop by several commits is the rebase merge of
+ *   the pull request rebaseMergeCandidate names
+ * @property {RebasedPull} pull
+ * @property {CommitIdentity[]} pullCommits the pull request's commits as `GET /repos/{owner}/{repo}/pulls/{number}/commits`
+ *   lists them, the oldest first
+ * @property {WalkedCommit[]} firstParents the commits on the first-parent walk down from the tip, the tip first, as far
+ *   as nextCommitToWalk led
+ */
+/**
  * @typedef {object} LandedCommit
  * @property {"master" | "develop"} branch
  * @property {string} before the branch tip before the push; all zeros when the push created the branch
  * @property {boolean} forced
  * @property {{ sha: string, parents: string[] }} commit the branch tip after the push
  * @property {LandedPull[]} pulls the pull requests GitHub associates with that commit
+ * @property {RebaseWalk} [rebaseWalk] read only for a push for which rebaseMergeCandidate names a pull request
  */
 /**
  * @typedef {object} PushedCommit a commit the push event lists
@@ -54,6 +82,9 @@
 
 export const PROTECTED_BRANCHES = Object.freeze(["master", "develop"]);
 export const LISTED_COMMIT_LIMIT = 20;
+// The walk asks GitHub for each commit of the pull request, and a GITHUB_TOKEN may make 1,000 requests an hour in a
+// repository. At this many commits `GET /repos/{owner}/{repo}/pulls/{number}/commits` also fits on one page.
+export const REBASE_MERGE_COMMIT_LIMIT = 100;
 export const AFTER_SEVERAL_COMMITS =
   "What happens next: the push is reverted before the next release, " +
   "or the repository's owner checks its content and accepts it.";
@@ -68,7 +99,7 @@ const CONTROL_CHARACTERS = /\p{Cc}/gu;
 const PARENT_COUNT_BY_BRANCH = { master: 2, develop: 1 };
 const MERGE_KIND_BY_BRANCH = {
   master: "merge commits",
-  develop: "squash commits",
+  develop: "squash commits or rebased commits",
 };
 
 /** @param {string} name */
@@ -203,7 +234,8 @@ export function decideMerge({ base, head }, branchFlow) {
 }
 
 /**
- * The `gh` invocations that carry out a merge decision, in order: the first merges, any later one cleans up after it.
+ * The `gh` invocations that carry out a merge decision, in order: the merge, then, for a pull request in a stack whose
+ * head branch is deleted, that deletion.
  * @param {MergeRequest} request
  * @param {MergeDecision} decision a decideMerge result that was not refused
  * @returns {string[][] | Refusal} argument lists for `gh`
@@ -300,10 +332,133 @@ function mergedPullOf(sha, pulls) {
 /**
  * @param {Pick<LandedCommit, "before" | "forced" | "commit">} landed
  * @returns {boolean} whether the push, neither forced nor the creation of the branch, moved the branch by more than
- *   one first-parent commit; landedCommitProblem gives that reason exactly then
+ *   one first-parent commit; landedCommitProblem gives that reason exactly then, unless the push is the rebase merge
+ *   of one pull request into develop
  */
 export function carriedSeveralCommits({ before, forced, commit }) {
   return !forced && !ALL_ZEROS.test(before) && commit.parents[0] !== before;
+}
+
+/**
+ * The pull request a push that moved develop by several commits can be the rebase merge of: the merged pull request
+ * into develop, paired as the flow allows, whose `merge_commit_sha` is the tip. For a rebase merge GitHub records the
+ * commit the base branch moved to as the pull request's `merge_commit_sha`.
+ * @param {LandedCommit} landed
+ * @param {BranchFlow} branchFlow
+ * @returns {LandedPull | undefined} that pull request, or undefined when the push cannot be a rebase merge
+ */
+export function rebaseMergeCandidate(landed, branchFlow) {
+  if (landed.branch !== "develop" || !carriedSeveralCommits(landed))
+    return undefined;
+  const pull = mergedPullOf(landed.commit.sha, landed.pulls);
+  if (pull === undefined || pull.base !== "develop") return undefined;
+  if (pullRequestPairProblem(pull, branchFlow) !== null) return undefined;
+  return pull;
+}
+
+/**
+ * Decides from the pull request alone, before its commits are listed or any commit below the tip is read. A rebase
+ * merge on GitHub always writes new commits, so its tip is never the pull request's head; it moves the branch by one
+ * first-parent commit per commit of the pull request, so a push of several commits needs at least two. A pull request
+ * in a GitHub stack is never taken: "Merge stack" with the rebase method lands the commits of every layer in one push,
+ * and whether the walk tells that push from the rebase merge of one pull request depends on what GitHub records for
+ * the top pull request after the merge, which its documentation does not say.
+ * @param {RebasedPull} pull
+ * @param {string} tipSha the branch tip after the push
+ * @returns {boolean} whether the push can be the rebase merge of the pull request and the check walks it
+ */
+export function canBeRebaseMergeOf({ commits, headSha, stacked }, tipSha) {
+  return (
+    !stacked &&
+    commits >= 2 &&
+    commits <= REBASE_MERGE_COMMIT_LIMIT &&
+    headSha !== tipSha
+  );
+}
+
+/**
+ * @param {RebasedPull} pull
+ * @returns {string | null} the line that says the check did not walk the push because the pull request has more than
+ *   REBASE_MERGE_COMMIT_LIMIT commits, or null
+ */
+export function unwalkedRebaseMergeLine({ number, commits }) {
+  if (commits <= REBASE_MERGE_COMMIT_LIMIT) return null;
+  return (
+    `Whether the push is the rebase merge of #${number} was not checked: #${number} has ${commits} commits, ` +
+    `and a pull request with more than ${REBASE_MERGE_COMMIT_LIMIT} commits is squashed, not rebased`
+  );
+}
+
+/**
+ * @param {CommitIdentity} walked
+ * @param {CommitIdentity} original
+ */
+function sameIdentity(walked, original) {
+  return (
+    walked.message === original.message &&
+    walked.authorName === original.authorName &&
+    walked.authorEmail === original.authorEmail
+  );
+}
+
+/**
+ * A rebase merge puts each commit of the pull request onto the branch as a new commit with one parent and the same
+ * message and author. The squash commits of a stack landed by one push carry their own pull requests' titles instead.
+ * @param {RebaseWalk} rebaseWalk
+ * @param {number} depth 0 for the tip
+ * @returns {boolean} whether the commit at that depth of the walk can be the pull request's commit as many places
+ *   before its last one, rebased
+ */
+function rebasedAt({ pullCommits, firstParents }, depth) {
+  const walked = firstParents[depth];
+  const original = pullCommits[pullCommits.length - 1 - depth];
+  return (
+    walked !== undefined &&
+    original !== undefined &&
+    walked.parents.length === 1 &&
+    sameIdentity(walked, original)
+  );
+}
+
+/**
+ * @param {RebaseWalk} rebaseWalk the commits read so far
+ * @param {string} before the branch tip before the push
+ * @returns {string | null} the commit to read next on the walk, or null when the commits read so far decide: the walk
+ *   has as many commits as the pull request, or reached before, or met a commit that rules out a rebase merge
+ */
+export function nextCommitToWalk(rebaseWalk, before) {
+  const { pull, firstParents } = rebaseWalk;
+  const depth = firstParents.length - 1;
+  const last = firstParents[depth];
+  if (last === undefined || firstParents.length >= pull.commits) return null;
+  if (!rebasedAt(rebaseWalk, depth) || last.parents[0] === before) return null;
+  return last.parents[0] ?? null;
+}
+
+/**
+ * @param {LandedCommit} landed a push for which carriedSeveralCommits is true
+ * @param {BranchFlow} branchFlow
+ * @returns {boolean} whether the push is the rebase merge of the pull request rebaseMergeCandidate names: the check
+ *   walks that pull request, GitHub lists as many commits for it as it counts, and from the tip the walk takes exactly
+ *   that many first-parent steps to reach before, each commit on it having one parent and the message and author of
+ *   the pull request's commit at the same place
+ */
+function isRebaseMerge(landed, branchFlow) {
+  const { rebaseWalk, commit, before } = landed;
+  if (rebaseWalk === undefined) return false;
+  if (rebaseMergeCandidate(landed, branchFlow) === undefined) return false;
+  const { pull, pullCommits, firstParents } = rebaseWalk;
+  return (
+    canBeRebaseMergeOf(pull, commit.sha) &&
+    pullCommits.length === pull.commits &&
+    firstParents.length === pull.commits &&
+    firstParents[0]?.sha === commit.sha &&
+    firstParents.every(
+      (walked, depth) =>
+        rebasedAt(rebaseWalk, depth) &&
+        walked.parents[0] === (firstParents[depth + 1]?.sha ?? before),
+    )
+  );
 }
 
 /**
@@ -347,19 +502,19 @@ export function carriedCommitLines(listed, total) {
 
 /**
  * Checks what a push left at the tip of master or develop. Merging a pull request moves the branch by exactly one
- * first-parent commit, the pull request's merge commit, so anything else did not come through a pull request.
+ * first-parent commit, the pull request's `merge_commit_sha`, except that a rebase merge into develop moves it by the
+ * pull request's commits, so anything else did not come through a pull request.
  * @param {LandedCommit} landed
  * @param {BranchFlow} branchFlow
  * @returns {string | null} why the push breaks the flow, or null
  */
-export function landedCommitProblem(
-  { branch, before, forced, commit, pulls },
-  branchFlow,
-) {
+export function landedCommitProblem(landed, branchFlow) {
+  const { branch, before, forced, commit, pulls } = landed;
   if (forced) return `${branch} was force-pushed to ${commit.sha}`;
   if (ALL_ZEROS.test(before))
     return `${branch} was created at ${commit.sha}, not moved by a pull request`;
-  if (carriedSeveralCommits({ before, forced, commit })) {
+  if (carriedSeveralCommits(landed)) {
+    if (isRebaseMerge(landed, branchFlow)) return null;
     return `${branch} moved from ${before} to ${commit.sha} by more than one first-parent commit`;
   }
   const pull = mergedPullOf(commit.sha, pulls);
