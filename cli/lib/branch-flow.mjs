@@ -234,7 +234,8 @@ export function decideMerge({ base, head }, branchFlow) {
 }
 
 /**
- * The `gh` invocations that carry out a merge decision, in order: the first merges, any later one cleans up after it.
+ * The `gh` invocations that carry out a merge decision, in order: the merge, then, for a pull request in a stack whose
+ * head branch is deleted, that deletion.
  * @param {MergeRequest} request
  * @param {MergeDecision} decision a decideMerge result that was not refused
  * @returns {string[][] | Refusal} argument lists for `gh`
