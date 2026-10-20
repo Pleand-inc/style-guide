@@ -2,22 +2,49 @@ import { readFileSync } from "node:fs";
 
 import {
   AFTER_SEVERAL_COMMITS,
+  canBeRebaseMergeOf,
   carriedCommitLines,
   carriedSeveralCommits,
   LISTED_COMMIT_LIMIT,
   landedCommitProblem,
+  nextCommitToWalk,
+  rebaseMergeCandidate,
+  unwalkedRebaseMergeLine,
 } from "../lib/branch-flow.mjs";
 import { UsageError } from "../lib/errors.mjs";
 import {
+  isStackedPullRequest,
   readCommit,
+  readCommitIdentity,
+  readPullRequestCommitCount,
+  readPullRequestCommits,
+  readPullRequestHeadSha,
   readPulls,
   readPushEvent,
   readPushedCommits,
 } from "../lib/github-payloads.mjs";
 import { loadBranchFlow } from "./repository-files.mjs";
 
+/** @typedef {import("../lib/branch-flow.mjs").CommitIdentity} CommitIdentity */
 /** @typedef {import("../lib/branch-flow.mjs").LandedCommit} LandedCommit */
 /** @typedef {import("../lib/branch-flow.mjs").LandedPull} LandedPull */
+/** @typedef {import("../lib/branch-flow.mjs").RebasedPull} RebasedPull */
+/** @typedef {import("../lib/branch-flow.mjs").RebaseWalk} RebaseWalk */
+/** @typedef {import("../lib/branch-flow.mjs").WalkedCommit} WalkedCommit */
+/** @typedef {import("../lib/config.mjs").BranchFlow} BranchFlow */
+/**
+ * @typedef {object} GitHubReads
+ * @property {(sha: string) => Promise<WalkedCommit>} walkedCommitOf
+ * @property {(sha: string) => Promise<LandedPull[]>} pullsOf the pull requests GitHub associates with the commit
+ * @property {(number: number) => Promise<RebasedPull>} pullOf
+ * @property {(number: number) => Promise<CommitIdentity[]>} pullCommitsOf the pull request's commits, the oldest first
+ */
+/**
+ * @typedef {object} CheckedPush
+ * @property {LandedCommit} landed the push, with the walk when the check walked it as a rebase merge
+ * @property {string | null} uncheckedRebaseLine the line that says why the check did not establish whether the push is
+ *   the rebase merge of the pull request rebaseMergeCandidate names, or null
+ */
 
 const PUBLIC_API_URL = "https://api.github.com";
 
@@ -73,6 +100,43 @@ async function describeCarriedCommits(payload, landed, readPullsOf) {
 }
 
 /**
+ * Reads, for a push that may be the rebase merge of one pull request into develop, that pull request, its commits and
+ * the commits on the first-parent walk down from the tip, as far as nextCommitToWalk leads. A read that fails leaves
+ * the push without the walk, so it fails as any other push of several commits, with one more line that says why.
+ * @param {LandedCommit} landed
+ * @param {BranchFlow} branchFlow
+ * @param {GitHubReads} read
+ * @returns {Promise<CheckedPush>}
+ */
+async function withRebaseWalk(landed, branchFlow, read) {
+  const candidate = rebaseMergeCandidate(landed, branchFlow);
+  if (candidate === undefined) return { landed, uncheckedRebaseLine: null };
+  try {
+    const pull = await read.pullOf(candidate.number);
+    if (!canBeRebaseMergeOf(pull, landed.commit.sha))
+      return { landed, uncheckedRebaseLine: unwalkedRebaseMergeLine(pull) };
+    /** @type {RebaseWalk} */
+    const rebaseWalk = {
+      pull,
+      pullCommits: await read.pullCommitsOf(pull.number),
+      firstParents: [await read.walkedCommitOf(landed.commit.sha)],
+    };
+    let sha = nextCommitToWalk(rebaseWalk, landed.before);
+    while (sha !== null) {
+      rebaseWalk.firstParents.push(await read.walkedCommitOf(sha));
+      sha = nextCommitToWalk(rebaseWalk, landed.before);
+    }
+    return { landed: { ...landed, rebaseWalk }, uncheckedRebaseLine: null };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      landed,
+      uncheckedRebaseLine: `Whether the push is the rebase merge of #${candidate.number} could not be checked: ${reason}`,
+    };
+  }
+}
+
+/**
  * @param {import("../lib/github-payloads.mjs").PushEvent} event
  * @param {unknown} payload the parsed push event that `event` was read from
  * @returns {Promise<string | null>} why the push breaks the flow, or null
@@ -84,20 +148,58 @@ async function pushProblem(event, payload) {
   // GitHub Actions sets GITHUB_API_URL; on GitHub Enterprise Server it is not the public address.
   const apiUrl = process.env.GITHUB_API_URL || PUBLIC_API_URL;
   const commitsUrl = `${apiUrl}/repos/${repository}/commits`;
-  /** @param {string} sha */
-  const readPullsOf = async (sha) =>
-    readPulls(await getJson(`${commitsUrl}/${sha}/pulls?per_page=100`, token));
-  const landed = {
+  const pullsUrl = `${apiUrl}/repos/${repository}/pulls`;
+  const tipResponse = await getJson(`${commitsUrl}/${event.after}`, token);
+  /** @type {GitHubReads} */
+  const read = {
+    // The walk starts at the tip, whose response is already here.
+    walkedCommitOf: async (sha) => {
+      const response =
+        sha === event.after
+          ? tipResponse
+          : await getJson(`${commitsUrl}/${sha}`, token);
+      return { ...readCommit(response), ...readCommitIdentity(response) };
+    },
+    pullsOf: async (sha) =>
+      readPulls(
+        await getJson(`${commitsUrl}/${sha}/pulls?per_page=100`, token),
+      ),
+    // The pull requests a commit lists lack the commit count; only the response for one pull request has it.
+    pullOf: async (number) => {
+      const response = await getJson(`${pullsUrl}/${number}`, token);
+      return {
+        number,
+        commits: readPullRequestCommitCount(response),
+        headSha: readPullRequestHeadSha(response),
+        stacked: isStackedPullRequest(response),
+      };
+    },
+    // canBeRebaseMergeOf lets through at most REBASE_MERGE_COMMIT_LIMIT commits, which one page of 100 holds.
+    pullCommitsOf: async (number) =>
+      readPullRequestCommits(
+        await getJson(`${pullsUrl}/${number}/commits?per_page=100`, token),
+      ),
+  };
+  /** @type {LandedCommit} */
+  const tip = {
     branch: event.branch,
     before: event.before,
     forced: event.forced,
-    commit: readCommit(await getJson(`${commitsUrl}/${event.after}`, token)),
-    pulls: await readPullsOf(event.after),
+    commit: readCommit(tipResponse),
+    pulls: await read.pullsOf(event.after),
   };
-  const problem = landedCommitProblem(landed, loadBranchFlow(process.cwd()));
+  const branchFlow = loadBranchFlow(process.cwd());
+  const { landed, uncheckedRebaseLine } = await withRebaseWalk(
+    tip,
+    branchFlow,
+    read,
+  );
+  const problem = landedCommitProblem(landed, branchFlow);
   if (problem === null || !carriedSeveralCommits(landed)) return problem;
-  const carried = await describeCarriedCommits(payload, landed, readPullsOf);
-  return [problem, ...carried, AFTER_SEVERAL_COMMITS].join("\n");
+  const carried = await describeCarriedCommits(payload, landed, read.pullsOf);
+  const lines = [problem, ...carried];
+  if (uncheckedRebaseLine !== null) lines.push(uncheckedRebaseLine);
+  return [...lines, AFTER_SEVERAL_COMMITS].join("\n");
 }
 
 /** @returns {Promise<number>} the exit status of the check on a push to master or develop */

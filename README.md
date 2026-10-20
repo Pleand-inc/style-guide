@@ -92,7 +92,7 @@ npx style-guide check
 
 ## 브랜치 흐름
 
-작업 브랜치는 `develop` 으로 squash, `develop` 은 `master` 로 머지 커밋입니다. 절차는 `rules/git/branch-flow/RULES.md` 에 있습니다. 머지는 이 저장소에서 `node cli/style-guide.mjs merge <PR 번호>` 로 하고, 패키지를 쓰는 저장소에서 `node_modules/.bin/style-guide merge <PR 번호>` 로 합니다.
+작업 브랜치는 `develop` 으로 squash 나 rebase, `develop` 은 `master` 로 머지 커밋입니다. 절차는 `rules/git/branch-flow/RULES.md` 에 있습니다. 머지는 이 저장소에서 `node cli/style-guide.mjs merge <PR 번호>` 로 하고, 패키지를 쓰는 저장소에서 `node_modules/.bin/style-guide merge <PR 번호>` 로 합니다. 이 명령은 `develop` 으로 가는 pull request 를 squash 로 머지합니다. `develop` 으로 rebase 할 때는 GitHub 웹의 머지 버튼에서 "Rebase and merge" 를 고릅니다. `master` 의 커밋을 `develop` 에 합치는 복구 pull request 는 머지 커밋으로 머지해야 하므로 `gh pr merge <PR 번호> --merge` 나 웹의 "Create a merge commit" 으로 머지합니다. 그 전에 `develop` 을 막는 규칙 묶음을 잠시 끄거나 저장소 조건에서 이 저장소를 잠시 빼는 절차도 `RULES.md` 에 있습니다.
 
 ## 게시
 
